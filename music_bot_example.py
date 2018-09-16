@@ -14,6 +14,9 @@ Requirements:
 discord.py rewrite: pip3 install -U git+https://github.com/Rapptz/discord.py@rewrite
 PyNaCl:             pip3 install -U pynacl
 youtube_dl:         pip3 install -U youtube_dl
+
+And also either have FFmpeg in your PATH environment variable or on Windows, 
+you could also place the FFmpeg.exe in your bot's directory.
 """
 
 import discord
