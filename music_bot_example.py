@@ -10,6 +10,8 @@ It is important for you to understand what each part of this code does before us
 Otherwise you'll just struggle. I strongly recommend to improve this example for yourself and not just use it.
 
 Requirements:
+
+Python 3.6+
 ----------------------
 discord.py rewrite: pip3 install -U git+https://github.com/Rapptz/discord.py@rewrite
 PyNaCl:             pip3 install -U pynacl
@@ -103,7 +105,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         data = await loop.run_in_executor(None, partial)
 
         if data is None:
-            raise YTDLError(f"Couldn't find anything that matches the search query `{search}`")
+            raise YTDLError(f'Couldn\'t find anything that matches the search query `{search}`')
 
         if 'entries' not in data:
             process_info = data
@@ -115,14 +117,14 @@ class YTDLSource(discord.PCMVolumeTransformer):
                     break
 
             if process_info is None:
-                raise YTDLError(f"Couldn't retrieve any data for the search query `{search}`")
+                raise YTDLError(f'Couldn\'t retrieve any data for the search query `{search}`')
 
         webpage_url = process_info['webpage_url']
         partial = functools.partial(cls.ytdl.extract_info, webpage_url, download=False)
         processed_info = await loop.run_in_executor(None, partial)
 
         if processed_info is None:
-            raise YTDLError(f"Error while trying to fetch the data for the url `{webpage_url}`")
+            raise YTDLError(f'Error while trying to fetch the data for the url `{webpage_url}`')
 
         if 'entries' not in processed_info:
             info = processed_info
@@ -132,7 +134,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
                 try:
                     info = processed_info['entries'].pop(0)
                 except IndexError:
-                    raise YTDLError(f"Couldn't retrieve any matches for the url `{webpage_url}`")
+                    raise YTDLError(f'Couldn\'t retrieve any matches for the url `{webpage_url}`')
 
         return cls(message, discord.FFmpegPCMAudio(info['url'], **cls.ffmpeg_opts), data=info)
 
