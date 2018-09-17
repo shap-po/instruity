@@ -477,6 +477,8 @@ class Music:
             raise MusicError('Not connected to any voice channel.')
 
         await ctx.state.stop()
+        # Clear the VoiceState object from the cache.
+        del self.voice_states[str(ctx.guild.id)]
 
     @_join.before_invoke
     @_play.before_invoke
