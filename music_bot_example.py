@@ -98,7 +98,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         return f'**{self.title}** by **{self.uploader}** *[Duration: {self.duration}]*'
 
     @classmethod
-    async def create_source(cls, message, search: str, loop=None):
+    async def create_source(cls, message, search: str, *, loop=None):
         loop = loop or asyncio.get_event_loop()
 
         partial = functools.partial(cls.ytdl.extract_info, search, download=False, process=False)
