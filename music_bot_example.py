@@ -93,7 +93,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.stream_url = data.get('url')
 
     def __str__(self):
-        return f'**{self.title}** by **{self.uploader}**'
+        return f'**{self.title}** by **{self.uploader}** *[Duration: {self.duration}]*'
 
     @classmethod
     async def create_source(cls, message, search: str, loop=None):
@@ -341,7 +341,7 @@ class Music:
                 song = Song(ctx.state.voice, source)
 
                 await ctx.state.songs.put(song)
-                await ctx.send(f'Enqueued {str(source)} *[Duration: {source.duration}]*')
+                await ctx.send(f'Enqueued {str(source)}')
 
     @commands.command(name='volume')
     async def _volume(self, ctx, *, volume: int):
