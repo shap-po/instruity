@@ -39,6 +39,9 @@ if not discord.opus.is_loaded():
     On Windows this DLL is automatically provided for you.
     """
     discord.opus.load_opus('opus')
+    
+# Fuck your useless bug reports message that gets two link embeds and confuses users
+youtube_dl.utils.bug_reports_message = lambda: ''
 
 
 class YTDLError(Exception):
