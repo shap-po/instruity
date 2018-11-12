@@ -21,15 +21,15 @@ And also either have FFmpeg in your PATH environment variable or on Windows,
 you could also place the FFmpeg.exe in your bot's directory.
 """
 
-import discord
-from discord.ext import commands
 import asyncio
-
-import random
 import functools
 import itertools
 import math
+import random
+
+import discord
 import youtube_dl
+from discord.ext import commands
 
 if not discord.opus.is_loaded():
     """
