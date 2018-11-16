@@ -29,6 +29,7 @@ import random
 
 import discord
 import youtube_dl
+from async_timeout import timeout
 from discord.ext import commands
 
 if not discord.opus.is_loaded():
@@ -205,11 +206,12 @@ class SongQueue(asyncio.Queue):
 
 
 class VoiceState:
-    def __init__(self, bot):
+    def __init__(self, bot, ctx):
         self.current = None
         self.voice = None
         self._volume = 0.5
         self.bot = bot
+        self._ctx = ctx
         self.next = asyncio.Event()
         self.songs = SongQueue()
         self.skip_votes = set()
@@ -218,8 +220,17 @@ class VoiceState:
     async def audio_player_task(self):
         while True:
             self.next.clear()
-
-            self.current = await self.songs.get()
+            
+            # Try to get a song within the next few minutes.
+            # If no song will be added to the queue in time,
+            # the player will disconnect due to performance
+            # reasons.
+            try:
+                async with timeout(300):  # 5 minutes
+                    self.current = await self.songs.get()
+            except asyncio.TimeoutError:
+                ctx = self._ctx
+                return self.bot.loop.create_task(self.stop())
 
             self.current.source.volume = self._volume
             self.voice.play(self.current.source, after=self.play_next_song)
@@ -271,12 +282,12 @@ class Music:
         self.bot = bot
         self.voice_states = {}
 
-    def get_voice_state(self, guild):
-        state = self.voice_states.get(str(guild.id))
+    def get_voice_state(self, ctx):
+        state = self.voice_states.get(ctx.guild.id)
 
         if state is None:
-            state = VoiceState(self.bot)
-            self.voice_states[str(guild.id)] = state
+            state = VoiceState(self.bot, ctx)
+            self.voice_states[ctx.guild.id] = state
 
         return state
 
@@ -291,7 +302,7 @@ class Music:
         return True
 
     async def __before_invoke(self, ctx):
-        ctx.state = self.get_voice_state(ctx.guild)
+        ctx.state = self.get_voice_state(ctx)
 
     async def __error(self, ctx, error):
         # This kind of error handling is not really good. It's simple and functional, but not good.
