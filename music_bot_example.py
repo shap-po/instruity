@@ -276,7 +276,7 @@ class VoiceState:
             self.voice = None
 
 
-class Music:
+class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.voice_states = {}
@@ -290,20 +290,20 @@ class Music:
 
         return state
 
-    def __unload(self):
+    def cog_unload(self):
         for state in self.voice_states.values():
             self.bot.loop.create_task(state.stop())
 
-    def __local_check(self, ctx):
+    def cog_check(self, ctx):
         if not ctx.guild:
             raise commands.NoPrivateMessage('This command can\'t be used in a DM channel.')
 
         return True
 
-    async def __before_invoke(self, ctx):
+    async def cog_before_invoke(self, ctx):
         ctx.state = self.get_voice_state(ctx)
 
-    async def __error(self, ctx, error):
+    async def cog_command_error(self, ctx, error):
         # This kind of error handling is not really good. It's simple and functional, but not good.
         # I'd recommend to extend this.
         await ctx.send(error)
@@ -511,5 +511,6 @@ bot.add_cog(Music(bot))
 @bot.event
 async def on_ready():
     print(f'=====================\nLogged in as:\n{bot.user.name}\n{bot.user.id}\n=====================')
+
 
 bot.run('token')
