@@ -13,7 +13,7 @@ Requirements:
 
 Python 3.6+
 ----------------------
-discord.py rewrite: pip3 install -U git+https://github.com/Rapptz/discord.py@rewrite
+discord.py rewrite: pip3 install -U discord.py
 PyNaCl:             pip3 install -U pynacl
 youtube_dl:         pip3 install -U youtube_dl
 
