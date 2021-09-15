@@ -1,3 +1,3 @@
 cd D:
-cd D:\Shap\projects\discord bots\dnd helper
+cd D:\Shap\projects\discord bots\instruity
 heroku ps:scale worker=1
