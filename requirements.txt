@@ -1,0 +1,5 @@
+discord.py==1.5.0
+youtube_dl==2020.12.31
+discord_py_slash_command==3.0.1
+async_timeout==3.0.1
+discord==1.7.3
