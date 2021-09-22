@@ -12,7 +12,7 @@ from discord_slash import SlashCommand, SlashContext, cog_ext
 from discord_slash.utils.manage_commands import create_option
 
 DEFAULT_VOLUME = 0.35
-bot = commands.Bot('-')
+bot = commands.Bot('-', intents=discord.Intents().all())
 slash = SlashCommand(bot)
 
 youtube_dl.utils.bug_reports_message = lambda: ''
@@ -28,9 +28,6 @@ class SongQueue(asyncio.Queue):
             return list(itertools.islice(self._queue, item.start, item.stop, item.step))
         else:
             return self._queue[item]
-
-    '''def __iter__(self):
-        return self._queue.__iter__()'''
 
     def __len__(self):
         return self.qsize()
@@ -184,6 +181,7 @@ class VoiceClient:
 
         self.loop = False
         self.volume = volume
+        self.removed = False
 
         self.audio_player = bot.loop.create_task(self.player_task())
 
@@ -226,6 +224,7 @@ class VoiceClient:
         if self.voice and disconnect:
             await self.voice.disconnect()
             self.voice = None
+        self.removed = True
 
     def skip(self):
         if self.is_playing and self.voice:
@@ -240,6 +239,9 @@ class Music(commands.Cog):
     def get_voice_client(self, ctx: commands.Context) -> VoiceClient:
         client = self.voice_clients.get(ctx.guild.id)
         if not client:
+            client = VoiceClient(self.bot)
+            self.voice_clients[ctx.guild.id] = client
+        if client.removed:
             client = VoiceClient(self.bot)
             self.voice_clients[ctx.guild.id] = client
         return client
@@ -440,10 +442,9 @@ class Music(commands.Cog):
         if not await self.ensure_voice_state(ctx, voice_client):
             return
 
-        volume /= 100
-        voice_client.volume = volume
+        voice_client.volume = volume / 100
         if voice_client.current:
-            voice_client.current.volume = volume
+            voice_client.current.volume = volume / 100
         await ctx.send(f'Громкость установленна на **{volume}%**')
 
     @bot.event
@@ -485,10 +486,9 @@ async def on_ready():
     await slash.sync_all_commands()
     print('Setup compleated')
 
-
 bot.add_cog(Music(bot))
 
-# with open('../test-token.txt', 'r') as f:
-with open('token.txt', 'r') as f:
+with open('../test-token.txt', 'r') as f:
+    # with open('token.txt', 'r') as f:
     token = f.read()
 bot.run(token)
