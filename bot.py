@@ -488,7 +488,7 @@ async def on_ready():
 
 bot.add_cog(Music(bot))
 
-with open('../test-token.txt', 'r') as f:
-    # with open('token.txt', 'r') as f:
+# with open('../test-token.txt', 'r') as f:
+with open('token.txt', 'r') as f:
     token = f.read()
 bot.run(token)
