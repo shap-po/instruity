@@ -12,7 +12,7 @@ from discord_slash import SlashCommand, SlashContext, cog_ext
 from discord_slash.utils.manage_commands import create_option
 
 DEFAULT_VOLUME = 0.35
-bot = commands.Bot('-', intents=discord.Intents().all())
+bot = commands.Bot('-')
 slash = SlashCommand(bot)
 
 youtube_dl.utils.bug_reports_message = lambda: ''
