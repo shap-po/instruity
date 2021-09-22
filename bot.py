@@ -113,6 +113,10 @@ class Song(discord.PCMVolumeTransformer):
                 raise SongException(
                     f'Не удалось найти ничего по запросу: `{search}`')
 
+        if not 'webpage_url' in process_info:
+            raise SongException(
+                f'Не удалось найти ничего по запросу: `{search}`')
+
         webpage_url = process_info['webpage_url']
         partial = functools.partial(
             cls.ytdl.extract_info, webpage_url, download=False)
@@ -136,7 +140,7 @@ class Song(discord.PCMVolumeTransformer):
 
     def restart(self):
         super().__init__(discord.FFmpegPCMAudio(
-            self.stream_url, **self.FFMPEG_OPTIONS), DEFAULT_VOLUME)
+            self.stream_url, **self.FFMPEG_OPTIONS), self.volume)
 
     @staticmethod
     def parse_duration(duration: int):
@@ -341,6 +345,7 @@ class Music(commands.Cog):
                 voice_client.skip()
             else:
                 await ctx.send(f'Голос учтен, всего голосов: **{total_votes}/{need_votes}**')
+            print(f'{total_votes}/{need_votes}')
         else:
             await ctx.send('Ты уже голосовал за пропуск этой песни')
 
@@ -392,14 +397,13 @@ class Music(commands.Cog):
         else:
             await ctx.send('В данный момент ничего не играет')
 
-    @cog_ext.cog_slash(name='queue',
-                       description='Отобразить очередь',
+    @cog_ext.cog_slash(name='queue', description='Отобразить очередь',
                        options=[
                            create_option(
-                                   name='page',
-                                   description='Страница (на одной странице 10 песен)',
-                                   option_type=4,
-                                   required=False
+                               name='page',
+                               description='Страница (на одной странице 10 песен)',
+                               option_type=4,
+                               required=False
                            )
                        ])
     async def queue(self, ctx: SlashContext, page: int = 1):
@@ -421,6 +425,26 @@ class Music(commands.Cog):
         embed = (discord.Embed(description=f'**{len(voice_client.queue)} треков:**\n\n{queue}')
                  .set_footer(text=f'Страница {page}/{pages}'))
         await ctx.send(embed=embed)
+
+    @cog_ext.cog_slash(name='volume', description='Установить громкость бота',
+                       options=[
+                           create_option(
+                               name='volume',
+                               description='Громкость (в %)',
+                               option_type=4,
+                               required=True
+                           )
+                       ])
+    async def volume(self, ctx: SlashContext, volume: int):
+        voice_client = self.get_voice_client(ctx)
+        if not await self.ensure_voice_state(ctx, voice_client):
+            return
+
+        volume /= 100
+        voice_client.volume = volume
+        if voice_client.current:
+            voice_client.current.volume = volume
+        await ctx.send(f'Громкость установленна на **{volume}%**')
 
     @bot.event
     async def on_slash_command_error(ctx: SlashContext, exception):
