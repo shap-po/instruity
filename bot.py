@@ -280,10 +280,10 @@ class Music(commands.Cog):
                                name='search',
                                description='Название или ссылка, если не указанно - ставит плеер на паузу',
                                option_type=3,
-                               required=False
+                               required=True
                            )
                        ])
-    async def play(self, ctx: SlashContext, search: str = None):
+    async def play(self, ctx: SlashContext, search: str):
         voice_client = self.get_voice_client(ctx)
         if not await self.ensure_voice_state(ctx, voice_client):
             return
@@ -291,9 +291,9 @@ class Music(commands.Cog):
         if not voice_client.voice:
             await ctx.invoke(self.join)
 
-        if search is None:
-            await ctx.invoke(self.pause)
-            return
+        # if search is None:
+        #    await ctx.invoke(self.pause)
+        #    return
 
         if voice_client.voice:
             try:
@@ -311,6 +311,7 @@ class Music(commands.Cog):
             return
 
         await voice_client.stop()
+        del voice_client
         await ctx.send('Проигрывание остановленно')
 
     @cog_ext.cog_slash(name='skip', description='Пропустить трек')
