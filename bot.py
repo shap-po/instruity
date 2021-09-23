@@ -52,7 +52,7 @@ class Song(discord.PCMVolumeTransformer):
         'audioformat': 'mp3',
         'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
         'restrictfilenames': True,
-        'noplaylist': True,
+        'noplaylist': False,
         'nocheckcertificate': True,
         'ignoreerrors': False,
         'logtostderr': False,
@@ -119,19 +119,23 @@ class Song(discord.PCMVolumeTransformer):
             cls.ytdl.extract_info, webpage_url, download=False)
         processed_info = await loop.run_in_executor(None, partial)
 
+        print(process_info)
         if processed_info is None:
             raise SongException(f'Не удалось получить аудио: `{webpage_url}`')
 
         if 'entries' not in processed_info:
             info = processed_info
         else:
-            info = None
-            while info is None:
-                try:
-                    info = processed_info['entries'].pop(0)
-                except IndexError:
-                    raise SongException(
-                        f'Не удалось получить информацию: `{webpage_url}`')
+            playlist = []
+            for entry in processed_info['entries']:
+                if entry:
+                    playlist.append(entry)
+
+            if len(playlist) == 0:
+                raise SongException(
+                    f'Не удалось получить информацию: `{webpage_url}`')
+
+            return [Song(ctx, discord.FFmpegPCMAudio(info['url'], **Song.FFMPEG_OPTIONS), data=info) for info in playlist]
 
         return cls(ctx, discord.FFmpegPCMAudio(info['url'], **cls.FFMPEG_OPTIONS), data=info)
 
@@ -159,7 +163,7 @@ class Song(discord.PCMVolumeTransformer):
 
     def create_embed(self):
         embed = (discord.Embed(title='Сейчас играет',
-                               description=f'```css\n{self.title}\n```',
+                               description=f'```\n{self.title}\n```',
                                color=discord.Color.blurple())
                  .add_field(name='Продолжительность', value=self.duration)
                  .add_field(name='Заказано', value=self.requester.mention)
@@ -176,7 +180,6 @@ class VoiceClient:
         self.voice = None
         self.queue = SongQueue()
         self.current = None
-        self.current_copy = None
         self.play_next = asyncio.Event()
 
         self.loop = False
@@ -242,6 +245,7 @@ class Music(commands.Cog):
             client = VoiceClient(self.bot)
             self.voice_clients[ctx.guild.id] = client
         if client.removed:
+            del client
             client = VoiceClient(self.bot)
             self.voice_clients[ctx.guild.id] = client
         return client
@@ -300,15 +304,20 @@ class Music(commands.Cog):
         # if search is None:
         #    await ctx.invoke(self.pause)
         #    return
-
         if voice_client.voice:
+            await ctx.defer()
             try:
                 song = await Song.create_source(ctx, search, loop=self.bot.loop)
             except SongException as e:
                 await ctx.send(str(e))
             else:
-                await voice_client.queue.add(song)
-                await ctx.send('Песня {} добавлена в очередь'.format(str(song)))
+                if isinstance(song, list):
+                    for i in song:
+                        await voice_client.queue.add(i)
+                    await ctx.send(f'{len(song)} треков добавлено в очередь')
+                else:
+                    await voice_client.queue.add(song)
+                    await ctx.send(f'Трек {song} добавлен в очередь')
 
     @cog_ext.cog_slash(name='stop', description='Выключить музыку')
     async def stop(self, ctx: commands.Context):
@@ -486,9 +495,19 @@ async def on_ready():
     await slash.sync_all_commands()
     print('Setup compleated')
 
+
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    setup_slash()
+    await slash.sync_all_commands()
+
+
 bot.add_cog(Music(bot))
 
-# with open('../test-token.txt', 'r') as f:
-with open('token.txt', 'r') as f:
-    token = f.read()
+if __name__ == '__main__':
+    with open('token.txt', 'r') as f:
+        token = f.read()
+else:
+    with open('../test-token.txt', 'r') as f:
+        token = f.read()
 bot.run(token)
