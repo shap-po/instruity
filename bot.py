@@ -1,4 +1,5 @@
 import asyncio
+from asyncio.queues import Queue
 import functools
 import itertools
 import math
@@ -8,14 +9,57 @@ import discord
 import youtube_dl
 from async_timeout import timeout
 from discord.ext import commands
-from discord_slash import SlashCommand, SlashContext, cog_ext
+from discord_slash import SlashCommand, SlashContext, ComponentContext, cog_ext
 from discord_slash.utils.manage_commands import create_option
+from discord_slash.utils.manage_components import create_actionrow, create_button
+from discord_slash.model import ButtonStyle, CogBaseCommandObject
 
+from playlists import playlists
 DEFAULT_VOLUME = 0.35
+
 bot = commands.Bot('-')
 slash = SlashCommand(bot)
 
 youtube_dl.utils.bug_reports_message = lambda: ''
+
+
+def setup_slash():
+    guild_ids = [guild.id for guild in bot.guilds]
+    for command in list(slash.commands.keys()):
+        if command == 'context':
+            continue
+        slash.commands[command].allowed_guild_ids = guild_ids
+    for command in list(slash.subcommands.keys()):
+        for subcommand in list(slash.subcommands[command].keys()):
+            slash.subcommands[command][subcommand].allowed_guild_ids = guild_ids
+
+
+def setup_aliases(aliases: dict):
+    for command in list(slash.commands.keys()):
+        if command == 'context':
+            continue
+        if command in aliases and command in slash.commands:
+            for alias in aliases[command]:
+                slash.commands[alias] = slash.commands[command]
+                slash.commands[alias].name = alias
+
+
+def create_actions(actions: dict, elements_in_row: int = 3) -> list:
+    if elements_in_row > 5:
+        elements_in_row = 5
+    action_list = []
+    i = 0
+    while i < len(actions):
+        row = []
+        for column in range(elements_in_row):
+            if i < len(actions):
+                id = list(actions.keys())[i]
+                action = list(actions.values())[i]
+                row.append(create_button(style=action.style,
+                           label=action.label, emoji=action.emoji, custom_id=id))
+            i += 1
+        action_list.append(create_actionrow(*row))
+    return action_list
 
 
 class SongException(Exception):
@@ -42,7 +86,17 @@ class SongQueue(asyncio.Queue):
         del self._queue[index]
 
     async def add(self, item):
-        await self.put(item)
+        if item:
+            if isinstance(item, list):
+                for i in item:
+                    await self.put(i)
+            else:
+                await self.put(item)
+
+    async def copy(self):
+        queue = SongQueue()
+        await queue.add(list(self._queue))
+        return queue
 
 
 class Song(discord.PCMVolumeTransformer):
@@ -70,7 +124,6 @@ class Song(discord.PCMVolumeTransformer):
     def __init__(self, ctx: SlashContext, source: discord.FFmpegPCMAudio, data: dict, volume: float = DEFAULT_VOLUME):
         super().__init__(source, volume)
 
-        self.requester = ctx.author
         self.uploader = data.get('uploader')
         self.uploader_url = data.get('uploader_url')
         self.title = data.get('title')
@@ -79,7 +132,10 @@ class Song(discord.PCMVolumeTransformer):
         self.url = data.get('webpage_url')
         self.stream_url = data.get('url')
 
-        self.channel = ctx.channel
+        if ctx:
+            self.requester = ctx.author
+        else:
+            self.requester = bot.user
         self.skip_votes = set()
 
     def __str__(self):
@@ -119,7 +175,6 @@ class Song(discord.PCMVolumeTransformer):
             cls.ytdl.extract_info, webpage_url, download=False)
         processed_info = await loop.run_in_executor(None, partial)
 
-        print(process_info)
         if processed_info is None:
             raise SongException(f'Не удалось получить аудио: `{webpage_url}`')
 
@@ -186,6 +241,9 @@ class VoiceClient:
         self.volume = volume
         self.removed = False
 
+        self.queue_before_dnd = None
+        self.dnd_playlist = None
+
         self.audio_player = bot.loop.create_task(self.player_task())
 
     def __del__(self):
@@ -211,7 +269,9 @@ class VoiceClient:
 
             self.current.volume = self.volume
             self.voice.play(self.current, after=self.play_next_song)
-            await self.current.channel.send(embed=self.current.create_embed())
+            # await self.current.channel.send(embed=self.current.create_embed())
+            if self.dnd_playlist and not self.loop:
+                self.bot.loop.create_task(self.dnd_random_song())
 
             await self.play_next.wait()
 
@@ -230,8 +290,45 @@ class VoiceClient:
         self.removed = True
 
     def skip(self):
+        self.loop = False
         if self.is_playing and self.voice:
             self.voice.stop()
+
+    async def dnd_random_song(self, add=True):
+        song = await Song.create_source(None, random.choice(
+            playlists[self.dnd_playlist]), loop=self.bot.loop)
+        if add:
+            await self.queue.add(song)
+        else:
+            return song
+
+    def reset_player(self):
+        self.audio_player.cancel()
+        self.audio_player = bot.loop.create_task(self.player_task())
+
+
+class Action:
+    def __init__(self, label: str = None, emoji: str = None, function=None, args: list = [], kwargs: dict = {}, style: int = ButtonStyle.gray):
+        self.style = style
+        self.label = label
+        self.emoji = emoji
+        self.function = function
+        self.args = args
+        self.kwargs = kwargs
+
+
+async def smart_send(ctx, *args, do_not_edit=False, **kwargs):
+    if isinstance(ctx, ComponentContext) and not do_not_edit:
+        if not 'content' in kwargs:
+            if len(args) == 0:
+                if not 'delete_after' in kwargs:
+                    kwargs['delete_after'] = 10
+                await ctx.send(*args, **kwargs)
+                return
+            kwargs['content'] = args[0]
+        await ctx.edit_origin(content=kwargs['content'])
+    else:
+        await ctx.send(*args, **kwargs)
 
 
 class Music(commands.Cog):
@@ -252,25 +349,30 @@ class Music(commands.Cog):
 
     async def ensure_voice_state(self, ctx: commands.Context, voice_client: VoiceClient) -> bool:
         if not ctx.author.voice:
-            await ctx.send('Для использования этой команды нужно находиться в голосовом канале')
+            await smart_send(ctx, 'Для использования этой команды нужно находиться в голосовом канале')
             return False
 
         if not ctx.author.voice.channel:
-            await ctx.send('Для использования этой команды нужно находиться в голосовом канале')
+            await smart_send(ctx, 'Для использования этой команды нужно находиться в голосовом канале')
             return False
 
         if voice_client:
             if voice_client.voice:
                 if voice_client.voice.channel and voice_client.voice.channel != ctx.author.voice.channel:
-                    await ctx.send('Бот уже используется в другом голосовом канале')
+                    await smart_send(ctx, 'Бот уже используется в другом голосовом канале')
                     return False
         return True
 
-    def is_dj(self, member: discord.Member):
+    @staticmethod
+    def is_dj(member: discord.Member) -> bool:
         for role in member.roles:
             if role.name.lower() == "dj":
                 return True
-        return False
+        return Music.is_admin(member)
+
+    @staticmethod
+    def is_admin(member: discord.Member) -> bool:
+        return member.guild_permissions.administrator
 
     @cog_ext.cog_slash(name='join', description='Призвать бота в голосовой канал')
     async def join(self, ctx: SlashContext):
@@ -309,15 +411,19 @@ class Music(commands.Cog):
             try:
                 song = await Song.create_source(ctx, search, loop=self.bot.loop)
             except SongException as e:
-                await ctx.send(str(e))
+                await smart_send(ctx, str(e))
             else:
                 if isinstance(song, list):
-                    for i in song:
-                        await voice_client.queue.add(i)
-                    await ctx.send(f'{len(song)} треков добавлено в очередь')
-                else:
-                    await voice_client.queue.add(song)
-                    await ctx.send(f'Трек {song} добавлен в очередь')
+                    if len(song) > 1:
+                        await voice_client.queue.add(song)
+                        await smart_send(ctx, f'{len(song)} треков добавлено в очередь')
+                        return
+                    elif len(song) == 1:
+                        song = song[0]
+                    else:
+                        return
+                await voice_client.queue.add(song)
+                await smart_send(ctx, f'Трек {song} добавлен в очередь')
 
     @cog_ext.cog_slash(name='stop', description='Выключить музыку')
     async def stop(self, ctx: commands.Context):
@@ -327,7 +433,7 @@ class Music(commands.Cog):
 
         await voice_client.stop()
         del voice_client
-        await ctx.send('Проигрывание остановленно')
+        await smart_send(ctx, 'Проигрывание остановленно')
 
     @cog_ext.cog_slash(name='skip', description='Пропустить трек')
     async def skip(self, ctx: commands.Context):
@@ -336,14 +442,14 @@ class Music(commands.Cog):
             return
 
         if not voice_client.is_playing:
-            return await ctx.send('В данный момент нечего скипать')
+            return await smart_send(ctx, 'В данный момент нечего скипать')
 
         voter = ctx.author
         if self.is_dj(voter):
-            await ctx.send('Трек пропущен диджеем')
+            await smart_send(ctx, 'Трек пропущен диджеем')
             voice_client.skip()
         elif voter == voice_client.current.requester:
-            await ctx.send('Трек пропущен заказчиком')
+            await smart_send(ctx, 'Трек пропущен заказчиком')
             voice_client.skip()
         elif voter.id not in voice_client.current.skip_votes:
             voice_client.current.skip_votes.add(voter.id)
@@ -352,13 +458,12 @@ class Music(commands.Cog):
             need_votes = listeners//2
 
             if total_votes >= need_votes:
-                await ctx.send('Трек пропущен')
+                await smart_send(ctx, 'Трек пропущен')
                 voice_client.skip()
             else:
-                await ctx.send(f'Голос учтен, всего голосов: **{total_votes}/{need_votes}**')
-            print(f'{total_votes}/{need_votes}')
+                await smart_send(ctx, f'Голос учтен, всего голосов: **{total_votes}/{need_votes}**')
         else:
-            await ctx.send('Ты уже голосовал за пропуск этой песни')
+            await smart_send(ctx, 'Ты уже голосовал за пропуск этой песни')
 
     @cog_ext.cog_slash(name='shuffle', description='Перемешать очередь')
     async def shuffle(self, ctx: commands.Context):
@@ -367,10 +472,10 @@ class Music(commands.Cog):
             return
 
         if len(voice_client.queue) == 0:
-            return await ctx.send('Очередь пуста')
+            return await smart_send(ctx, 'Очередь пуста')
 
         voice_client.queue.shuffle()
-        await ctx.send('Очередь перемешана')
+        await smart_send(ctx, 'Очередь перемешана')
 
     @cog_ext.cog_slash(name='loop', description='Включить/выключить повторение трека')
     async def loop(self, ctx: commands.Context):
@@ -379,18 +484,18 @@ class Music(commands.Cog):
             return
 
         if not voice_client.is_playing:
-            return await ctx.send('В данный момент ничего не играет')
+            return await smart_send(ctx, 'В данный момент ничего не играет')
 
         voice_client.loop = not voice_client.loop
-        await ctx.send(f'Теперь трек {"не "*int(not voice_client.loop)}будет повторяться')
+        await smart_send(ctx, f'Теперь трек {"не "*int(not voice_client.loop)}будет повторяться')
 
     @cog_ext.cog_slash(name='playing', description='Отобразить название трека, который сейчас играет')
     async def now(self, ctx: commands.Context):
         voice_client = self.get_voice_client(ctx)
         if voice_client.current:
-            await ctx.send(embed=voice_client.current.create_embed())
+            await smart_send(ctx, embed=voice_client.current.create_embed())
         else:
-            await ctx.send('В данный момент ничего не играет')
+            await smart_send(ctx, 'В данный момент ничего не играет')
 
     @cog_ext.cog_slash(name='pause', description='Поставить плеер на паузу или снять с неё')
     async def pause(self, ctx: commands.Context):
@@ -400,13 +505,13 @@ class Music(commands.Cog):
 
         if voice_client.is_playing and voice_client.voice:
             if voice_client.voice.is_playing():
-                await ctx.send('Плеер поставлен на паузу')
+                await smart_send(ctx, 'Плеер поставлен на паузу')
                 voice_client.voice.pause()
             else:
-                await ctx.send('Плеер снят с паузы')
+                await smart_send(ctx, 'Плеер снят с паузы')
                 voice_client.voice.resume()
         else:
-            await ctx.send('В данный момент ничего не играет')
+            await smart_send(ctx, 'В данный момент ничего не играет')
 
     @cog_ext.cog_slash(name='queue', description='Отобразить очередь',
                        options=[
@@ -421,7 +526,7 @@ class Music(commands.Cog):
         voice_client = self.get_voice_client(ctx)
 
         if len(voice_client.queue) == 0:
-            return await ctx.send('Очередь пуста')
+            return await smart_send(ctx, 'Очередь пуста')
 
         items_per_page = 10
         pages = math.ceil(len(voice_client.queue) / items_per_page)
@@ -435,7 +540,7 @@ class Music(commands.Cog):
 
         embed = (discord.Embed(description=f'**{len(voice_client.queue)} треков:**\n\n{queue}')
                  .set_footer(text=f'Страница {page}/{pages}'))
-        await ctx.send(embed=embed)
+        await smart_send(ctx, embed=embed)
 
     @cog_ext.cog_slash(name='volume', description='Установить громкость бота',
                        options=[
@@ -454,36 +559,95 @@ class Music(commands.Cog):
         voice_client.volume = volume / 100
         if voice_client.current:
             voice_client.current.volume = volume / 100
-        await ctx.send(f'Громкость установленна на **{volume}%**')
+        await smart_send(ctx, f'Громкость установленна на **{volume}%**')
 
-    @bot.event
-    async def on_slash_command_error(ctx: SlashContext, exception):
-        if isinstance(exception, discord.ext.commands.errors.MissingPermissions):
-            await ctx.send(f'Не хватает полномочий для использования данной команды.')
+    @cog_ext.cog_slash(name='actions', description='Получить список быстрых действий')
+    async def actions(self, ctx: SlashContext):
+        if self.is_admin(ctx.author):
+            await smart_send(ctx, 'Быстрые действия', components=dnd_action_list)
         else:
-            raise exception
-        # await ctx.send(f'Произошла ошибка: {error}')
+            await smart_send(ctx, 'Быстрые действия', components=action_list)
+
+    async def dnd_music(self, ctx: ComponentContext):
+        if not self.is_admin(ctx.author):
+            await smart_send(ctx, 'Эта панель только для админов, не тыкай ¯\\_(ツ)_/¯', hidden=True, do_not_edit=True)
+            return
+
+        voice_client = self.get_voice_client(ctx)
+
+        action = ctx.custom_id
+        if action == 'exit':
+            if voice_client.dnd_playlist:
+                voice_client.dnd_playlist = None
+                voice_client.queue = voice_client.queue_before_dnd
+                voice_client.skip()
+                voice_client.queue_before_dnd = None
+                await smart_send(ctx, 'DnD mode deactivated')
+            else:
+                await smart_send(ctx, 'DnD mode is already deactivated')
+            return
+
+        if not await self.ensure_voice_state(ctx, voice_client):
+            return
+
+        if not voice_client.voice:
+            await self.join.invoke(ctx)
+
+        ac = ''
+        if not voice_client.dnd_playlist:
+            voice_client.queue_before_dnd = await voice_client.queue.copy()
+            ac = "DnD mode activated & "
+        await smart_send(ctx, f'{ac}Selected playlist "{action}"')
+
+        voice_client.dnd_playlist = action
+        voice_client.queue.clear()
+        song = await voice_client.dnd_random_song(add=False)
+        voice_client.skip()
+        await voice_client.queue.add(song)
+        await voice_client.dnd_random_song()
 
 
-def setup_slash():
-    guild_ids = [guild.id for guild in bot.guilds]
-    for command in list(slash.commands.keys()):
-        if command == 'context':
-            continue
-        slash.commands[command].allowed_guild_ids = guild_ids
-    for command in list(slash.subcommands.keys()):
-        for subcommand in list(slash.subcommands[command].keys()):
-            slash.subcommands[command][subcommand].allowed_guild_ids = guild_ids
+@bot.event
+async def on_component(ctx: ComponentContext):
+    if isinstance(ctx, ComponentContext):
+        # await ctx.defer(hidden=True)
+        if ctx.custom_id in list(ACTIONS.keys()):
+            if ACTIONS[ctx.custom_id].function:
+                function = getattr(music, ACTIONS[ctx.custom_id].function)
+                if isinstance(function, CogBaseCommandObject):
+                    await function.invoke(ctx)
+                else:
+                    await function(ctx)
 
 
-def setup_aliases(aliases: dict):
-    for command in list(slash.commands.keys()):
-        if command == 'context':
-            continue
-        if command in aliases and command in slash.commands:
-            for alias in aliases[command]:
-                slash.commands[alias] = slash.commands[command]
-                slash.commands[alias].name = alias
+@bot.event
+async def on_slash_command_error(ctx: SlashContext, exception):
+    if isinstance(exception, discord.ext.commands.errors.MissingPermissions):
+        await smart_send(ctx, f'Не хватает полномочий для использования данной команды.')
+    else:
+        raise exception
+    # await smart_send(ctx,f'Произошла ошибка: {error}')
+
+
+NORMAL_ACTIONS = {
+    'pause': Action(style=ButtonStyle.blue, emoji='⏯', function='pause'),
+    'skip': Action(style=ButtonStyle.blue, emoji='⏭', function='skip'),
+    'stop': Action(style=ButtonStyle.blue, emoji='⏹', function='stop'),
+    'loop': Action(style=ButtonStyle.blue, emoji='🔁', function='loop'),
+    'now': Action(style=ButtonStyle.blue, emoji='🎶', function='now'),
+    'queue': Action(style=ButtonStyle.blue, emoji='📃', function='queue'),
+}
+DND_ACTIONS = {
+    'spooky': Action(emoji='👻', function='dnd_music'),
+    'medieval': Action(emoji='🏰', function='dnd_music'),
+    'forest': Action(emoji='🌲', function='dnd_music'),
+    'magical': Action(emoji='✨', function='dnd_music'),
+    'relaxing': Action(emoji='😊', function='dnd_music'),
+    'exit': Action(emoji='🚫', function='dnd_music'),
+}
+ACTIONS = {**NORMAL_ACTIONS, **DND_ACTIONS}
+action_list = create_actions(NORMAL_ACTIONS)
+dnd_action_list = action_list + create_actions(DND_ACTIONS)
 
 
 @bot.event
@@ -501,8 +665,8 @@ async def on_guild_join(guild: discord.Guild):
     setup_slash()
     await slash.sync_all_commands()
 
-
-bot.add_cog(Music(bot))
+music = Music(bot)
+bot.add_cog(music)
 
 if __name__ == '__main__':
     with open('token.txt', 'r') as f:
