@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord_slash import SlashCommand, SlashContext, ComponentContext
 
-from ext import MusicCog, ActionsCog
+from ext import *
 from ext.actions import controls_list, infinite_action_list, saved_action_list
 from utils import *
 

@@ -50,11 +50,6 @@ class SongQueue(asyncio.Queue):
             else:
                 await self.put(item)
 
-    async def copy(self):
-        queue = SongQueue()
-        await queue.add(list(self._queue))
-        return queue
-
 
 class Song(discord.PCMVolumeTransformer):
     YTDL_OPTIONS = {
@@ -78,8 +73,9 @@ class Song(discord.PCMVolumeTransformer):
     }
     ytdl = youtube_dl.YoutubeDL(YTDL_OPTIONS)
 
-    def __init__(self, requester: discord.Member, source: discord.FFmpegPCMAudio, data: dict, volume: float = DEFAULT_VOLUME, infinite: bool = False):
-        super().__init__(source, volume)
+    def __init__(self, requester: discord.Member, data: dict, volume: float = DEFAULT_VOLUME, infinite: bool = False):
+        super().__init__(discord.FFmpegPCMAudio(
+            data.get('url'), **Song.FFMPEG_OPTIONS), volume)
 
         self.uploader = data.get('uploader')
         self.uploader_url = data.get('uploader_url')
@@ -101,37 +97,12 @@ class Song(discord.PCMVolumeTransformer):
         loop = loop or asyncio.get_event_loop()
 
         partial = functools.partial(
-            cls.ytdl.extract_info, search, download=False, process=False)
-        data = await loop.run_in_executor(None, partial)
-
-        if data is None:
-            raise SongException(
-                f'Не удалось найти ничего по запросу: `{search}`')
-
-        if 'entries' not in data:
-            process_info = data
-        else:
-            process_info = None
-            for entry in data['entries']:
-                if entry:
-                    process_info = entry
-                    break
-
-            if process_info is None:
-                raise SongException(
-                    f'Не удалось найти ничего по запросу: `{search}`')
-
-        if not 'webpage_url' in process_info:
-            raise SongException(
-                f'Не удалось найти ничего по запросу: `{search}`')
-
-        webpage_url = process_info['webpage_url']
-        partial = functools.partial(
-            cls.ytdl.extract_info, webpage_url, download=False)
+            cls.ytdl.extract_info, search, download=False)
         processed_info = await loop.run_in_executor(None, partial)
 
         if processed_info is None:
-            raise SongException(f'Не удалось получить аудио: `{webpage_url}`')
+            raise SongException(
+                f'Не удалось получить аудио по запросу: "{search}"')
 
         if 'entries' not in processed_info:
             info = processed_info
@@ -143,11 +114,11 @@ class Song(discord.PCMVolumeTransformer):
 
             if len(playlist) == 0:
                 raise SongException(
-                    f'Не удалось получить информацию: `{webpage_url}`')
+                    f'Не удалось найти ничего по запросу: "{search}"')
 
-            return [cls(requester, discord.FFmpegPCMAudio(info['url'], **Song.FFMPEG_OPTIONS), data=info, infinite=infinite) for info in playlist]
+            return [cls(requester, data=info, infinite=infinite) for info in playlist]
 
-        return cls(requester, discord.FFmpegPCMAudio(info['url'], **cls.FFMPEG_OPTIONS), data=info, infinite=infinite)
+        return cls(requester, data=info, infinite=infinite)
 
     def restart(self):
         super().__init__(discord.FFmpegPCMAudio(
