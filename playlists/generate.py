@@ -41,8 +41,12 @@ def create_playlist(url):
     return playlist
 
 
-playlists = {'bossfight': [
-    'https://www.youtube.com/playlist?list=PL3wU0bRYeer4sD7Id_aCDfowDni4dRHe_']}
+def format(text):
+    return pformat(text).replace('{', '{\n')
+
+
+playlists = {'epic': [
+    'https://www.youtube.com/playlist?list=PLrjo8kFr6wuy9x38Imyb3bOvP7vfqpsvb']}
 #playlists = {'test': ['https://www.youtube.com/playlist?list=PLLdhzT83SscRI4saA8itRwElf_aKBAHwW']}
 
 
@@ -58,8 +62,8 @@ for id, lists in playlists.items():
     info[id] = list(set(info[id]))
 
 
-final = pformat(final)
-info = pformat(info)
+final = format(final)
+info = format(info)
 with open('__init__.py', 'w') as f:
     f.write(f'playlists = {final}\n\ninfo = {info}')
 
