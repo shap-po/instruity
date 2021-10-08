@@ -32,7 +32,9 @@ class OpeningCog(commands.Cog):
     def get_anime(self, userid: str) -> typing.List[str]:
         r = self.scraper.get(
             f'https://yummyanime.club/users/{userid}?tab=watched')
+        print(f'{r=}')
         s = BeautifulSoup(r.text, 'html.parser')
+        print(f'{s=}')
         return [i['href'] for i in s.findAll('a', href=True) if '/catalog/item/' in i['href']]
 
     def get_name(self, link: str) -> typing.List[str]:
