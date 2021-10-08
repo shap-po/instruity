@@ -3,7 +3,7 @@ from discord_slash import SlashContext, ComponentContext, cog_ext
 import typing
 from bs4 import BeautifulSoup
 import re
-import cloudscraper
+import cfscrape
 from discord_slash.utils.manage_commands import create_option
 import random
 
@@ -14,7 +14,7 @@ ZERO_SPACE = '​'  # there is a space between quotes, believe me :)
 
 
 class OpeningCog(commands.Cog):
-    scraper = cloudscraper.create_scraper()
+    scraper = cfscrape.create_scraper()
 
     def __init__(self, bot: commands.Bot, music_cog: MusicCog):
         self.music_cog = music_cog
