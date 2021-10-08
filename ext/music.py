@@ -114,6 +114,12 @@ class Song(discord.PCMVolumeTransformer):
 
         loop = loop or asyncio.get_event_loop()
 
+        if search.startswith('https://'):
+            search = search[len('https://'):]
+        if search.startswith('http://'):
+            search = search[len('http://'):]
+        search = search.replace(':', '')
+
         partial = functools.partial(
             cls.ytdl.extract_info, search, download=False)
         processed_info = await loop.run_in_executor(None, partial)
@@ -294,7 +300,7 @@ class VoiceClient:
         self.audio_player.cancel()
         self.audio_player = self.bot.loop.create_task(self.player_task())
 
-    async def play(self, song: Song):
+    async def play(self, song: Song) -> None:
         if not len(self.queue):
             if self.current:
                 self.skip()
