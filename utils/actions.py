@@ -6,6 +6,8 @@ from discord_slash.utils.manage_components import create_actionrow, create_butto
 
 
 class Action:
+    """Namedtuple for actions."""
+
     def __init__(self, label: str = None, emoji: str = None, function=None, args: list = [], kwargs: dict = {}, style: int = ButtonStyle.gray):
         self.style = style
         self.label = label
@@ -17,6 +19,15 @@ class Action:
 
 
 def create_actions(actions: typing.Dict[str, Action], elements_in_row: int = 3) -> list:
+    """Create a list of buttons.
+
+    Args:
+        actions (dict[str: Action]): Dict of actions.
+        elements_in_row (int, optional): Max count of elements in a row. Defaults to 3.
+
+    Returns:
+        list: List of buttons.
+    """
     if elements_in_row > 5:
         elements_in_row = 5
     action_list = []

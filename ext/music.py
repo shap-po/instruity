@@ -1,6 +1,7 @@
 import math
 import asyncio
 import functools
+import typing
 import discord
 import itertools
 import random
@@ -20,10 +21,12 @@ youtube_dl.utils.bug_reports_message = lambda: ''
 
 
 class SongException(Exception):
-    pass
+    """A custom exception for Song.create_source."""
 
 
 class SongQueue(asyncio.Queue):
+    """A song queue object."""
+
     def __getitem__(self, item):
         if isinstance(item, slice):
             return list(itertools.islice(self._queue, item.start, item.stop, item.step))
@@ -52,6 +55,7 @@ class SongQueue(asyncio.Queue):
 
 
 class Song(discord.PCMVolumeTransformer):
+    """An object that contains basic info about song and can be used in player as music source."""
     YTDL_OPTIONS = {
         'format': 'bestaudio/best',
         'extractaudio': True,
@@ -74,9 +78,6 @@ class Song(discord.PCMVolumeTransformer):
     ytdl = youtube_dl.YoutubeDL(YTDL_OPTIONS)
 
     def __init__(self, requester: discord.Member, data: dict, volume: float = DEFAULT_VOLUME, infinite: bool = False):
-        super().__init__(discord.FFmpegPCMAudio(
-            data.get('url'), **Song.FFMPEG_OPTIONS), volume)
-
         self.uploader = data.get('uploader')
         self.uploader_url = data.get('uploader_url')
         self.title = data.get('title')
@@ -86,14 +87,31 @@ class Song(discord.PCMVolumeTransformer):
         self.stream_url = data.get('url')
         self.requester = requester
         self.skip_votes = set()
-
         self.infinite = infinite
+        self.volume = volume
+
+        self.restart()
 
     def __str__(self):
         return f'**{self.title}** от **{self.uploader}**'
 
     @classmethod
-    async def create_source(cls, requester: discord.Member, search: str, loop: asyncio.BaseEventLoop = None, infinite: bool = False):
+    async def create_source(cls, search: str, requester: discord.Member, loop: asyncio.BaseEventLoop = None, infinite: bool = False) -> typing.Union['Song', typing.List['Song']]:
+        """Create a new song source from a search.
+
+        Args:
+            search (str): URL or song name.
+            requester (discord.Member): Requester of the song.
+            loop (asyncio.BaseEventLoop, optional): Event loop for searching the song. Defaults to None.
+            infinite (bool, optional): Is the song created by infinite playlist mode. Defaults to False.
+
+        Raises:
+            SongException: Raised when can't find song.
+
+        Returns:
+            :class:`Song` | list[:class:`Song`]
+        """
+
         loop = loop or asyncio.get_event_loop()
 
         partial = functools.partial(
@@ -120,12 +138,21 @@ class Song(discord.PCMVolumeTransformer):
 
         return cls(requester, data=info, infinite=infinite)
 
-    def restart(self):
+    def restart(self) -> None:
+        """Restart the song source to continue playback in loop mode."""
         super().__init__(discord.FFmpegPCMAudio(
             self.stream_url, **self.FFMPEG_OPTIONS), self.volume)
 
     @staticmethod
-    def parse_duration(duration: int):
+    def parse_duration(duration: int) -> str:
+        """Parse duration into a string.
+
+        Args:
+            duration (int)
+
+        Returns:
+            str: Formated duration.
+        """
         minutes, seconds = divmod(duration, 60)
         hours, minutes = divmod(minutes, 60)
         days, hours = divmod(hours, 24)
@@ -142,7 +169,12 @@ class Song(discord.PCMVolumeTransformer):
 
         return ' '.join(duration)
 
-    def create_embed(self):
+    def create_embed(self) -> discord.Embed:
+        """Create an embed for `/now` command.
+
+        Returns:
+            discord.Embed
+        """
         embed = (discord.Embed(title='Сейчас играет',
                                description=f'```\n{self.title}\n```',
                                color=discord.Color.blurple())
@@ -155,6 +187,8 @@ class Song(discord.PCMVolumeTransformer):
 
 
 class VoiceClient:
+    """Music player instance."""
+
     def __init__(self, bot: commands.Bot, volume: float = DEFAULT_VOLUME):
         self.bot = bot
 
@@ -170,6 +204,8 @@ class VoiceClient:
         self.infinite_playlist = None
         self.infinite_queue = SongQueue()
 
+        self.play_now = None
+
         self.audio_player = bot.loop.create_task(self.player_task())
 
     def __del__(self):
@@ -180,13 +216,17 @@ class VoiceClient:
         return self.voice and self.current
 
     async def player_task(self):
+        """An actual player."""
         while True:
             self.play_next.clear()
 
             if not self.loop:
                 try:
                     async with timeout(180):  # 3 minutes
-                        if self.infinite_playlist and not len(self.queue):
+                        if self.play_now:
+                            self.current = self.play_now
+                            self.play_now = None
+                        elif self.infinite_playlist and not len(self.queue):
                             self.current = await self.infinite_queue.get()
                         else:
                             self.current = await self.queue.get()
@@ -205,9 +245,14 @@ class VoiceClient:
             await self.play_next.wait()
 
     def play_next_song(self, error=None):
+        """This function will force player to play next song.
+        It automatically runs when previous song ends.
+        """
         if error:
             raise Exception(str(error))
             # raise error
+        if not self.loop:
+            self.current = None
         self.play_next.set()
 
     async def stop(self, disconnect=True):
@@ -223,11 +268,18 @@ class VoiceClient:
         if self.is_playing and self.voice:
             self.voice.stop()
 
-    async def random_infinite_song(self, add=True):
+    async def random_infinite_song(self, add=True) -> typing.Optional[Song]:
+        """Create a :class:`Song` using random url from selected infinite playlist.
+
+        Args:
+            add (bool, optional): Add created song to `infinite_queue`. Defaults to True.
+
+        Returns:
+            Optional[Song]
+        """
         while True:
             try:
-                song = await Song.create_source(self.bot.user, random.choice(
-                    playlists[self.infinite_playlist]), loop=self.bot.loop, infinite=True)
+                song = await Song.create_source(search=random.choice(playlists[self.infinite_playlist]), requester=self.bot.user, loop=self.bot.loop, infinite=True)
             except Exception as exception:
                 print(f'Random infinite song error: {exception=}')
             else:
@@ -238,9 +290,18 @@ class VoiceClient:
         else:
             return song
 
-    def reset_player(self):
+    def reset_player(self) -> None:
         self.audio_player.cancel()
         self.audio_player = self.bot.loop.create_task(self.player_task())
+
+    async def play(self, song: Song):
+        if not len(self.queue):
+            if self.current:
+                self.skip()
+            await self.queue.add(song)
+        else:
+            self.play_now = song
+            self.skip()
 
 
 class MusicCog(commands.Cog):
@@ -249,6 +310,7 @@ class MusicCog(commands.Cog):
         self.voice_clients = {}
 
     def get_voice_client(self, ctx: SlashContext) -> VoiceClient:
+        """Get a voice client or create a new one."""
         client = self.voice_clients.get(ctx.guild.id)
         if not client:
             client = VoiceClient(self.bot)
@@ -260,6 +322,9 @@ class MusicCog(commands.Cog):
         return client
 
     async def ensure_voice_state(self, ctx: SlashContext, voice_client: VoiceClient) -> bool:
+        """Ensure that the voice state is valid.
+        If not, parrent function should stop it's execution."""
+
         if not ctx.author.voice:
             await smart_send(ctx, 'Для использования этой команды нужно находиться в голосовом канале')
             return False
@@ -314,7 +379,7 @@ class MusicCog(commands.Cog):
         if voice_client.voice:
             await ctx.defer()
             try:
-                song = await Song.create_source(ctx.author, search, loop=self.bot.loop)
+                song = await Song.create_source(search=search, requester=ctx.author, loop=self.bot.loop)
             except SongException as e:
                 await smart_send(ctx, str(e))
             else:
@@ -435,7 +500,8 @@ class MusicCog(commands.Cog):
         voice_client = self.get_voice_client(ctx)
 
         if len(voice_client.queue) == 0:
-            return await smart_send(ctx, 'Очередь пуста')
+            await smart_send(ctx, 'Очередь пуста')
+            return
 
         items_per_page = 10
         pages = math.ceil(len(voice_client.queue) / items_per_page)
@@ -469,3 +535,18 @@ class MusicCog(commands.Cog):
         if voice_client.current:
             voice_client.current.volume = volume / 100
         await smart_send(ctx, f'Громкость установленна на **{volume}%**')
+
+    @cog_ext.cog_slash(name='clear', description='Очистить очередь')
+    async def clear(self, ctx: SlashContext):
+        voice_client = self.get_voice_client(ctx)
+        if not await self.ensure_voice_state(ctx, voice_client):
+            return
+
+        voice_client.skip()
+
+        if len(voice_client.queue) == 0:
+            await smart_send(ctx, 'Очередь пуста')
+            return
+
+        voice_client.queue.clear()
+        await smart_send(ctx, 'Очередь очищена')

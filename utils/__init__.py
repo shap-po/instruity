@@ -8,6 +8,13 @@ from utils.actions import *
 
 
 async def smart_send(ctx: typing.Union[Context, ComponentContext], *args, do_not_edit=False, **kwargs):
+    """Send message or edit origin. Better version of something like:
+
+    if isinstance(ctx, Context):
+        await ctx.send(msg)
+    else:
+        await ctx.edit_origin(msg)
+    """
     if isinstance(ctx, ComponentContext) and not do_not_edit:
         if not 'content' in kwargs:
             if len(args) == 0:

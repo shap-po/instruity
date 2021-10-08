@@ -7,8 +7,7 @@ from ext.music import MusicCog
 
 
 class ActionsCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, music_cog: MusicCog):
-        self.bot = bot
+    def __init__(self, music_cog: MusicCog):
         self.music_cog = music_cog
 
     @cog_ext.cog_slash(name='actions', description='Получить список быстрых действий')
@@ -17,6 +16,7 @@ class ActionsCog(commands.Cog):
         # await ctx.channel.send('Избранные треки и плейлисты', components=saved_actions)
 
     async def play_infinite(self, ctx: ComponentContext):
+        """Enable infinite playlist mode and select playlist."""
         voice_client = self.music_cog.get_voice_client(ctx)
         if not await self.music_cog.ensure_voice_state(ctx, voice_client):
             return
@@ -35,8 +35,6 @@ class ActionsCog(commands.Cog):
         voice_client.infinite_queue.clear()
         await voice_client.random_infinite_song()
         await voice_client.random_infinite_song()
-        if is_admin(ctx.author):
-            voice_client.queue.clear()
         if voice_client.current:
             if voice_client.current.infinite:
                 voice_client.skip()
@@ -44,6 +42,7 @@ class ActionsCog(commands.Cog):
             await voice_client.queue.add(await voice_client.random_infinite_song(False))
 
     async def exit_infinite(self, ctx: ComponentContext):
+        """Disable infinite playlist mode."""
         voice_client = self.music_cog.get_voice_client(ctx)
         if not await self.music_cog.ensure_voice_state(ctx, voice_client):
             return
@@ -59,6 +58,7 @@ class ActionsCog(commands.Cog):
             await smart_send(ctx, 'Режим бесконечной музыки уже выключен')
 
     async def play_saved(self, ctx: ComponentContext):
+        """Add saved song or playlist to queue"""
         voice_client = self.music_cog.get_voice_client(ctx)
         if not await self.music_cog.ensure_voice_state(ctx, voice_client):
             return
@@ -68,12 +68,14 @@ class ActionsCog(commands.Cog):
 
 
 controls_list = {
-    'pause': Action(style=ButtonStyle.blue, emoji='⏯', function='pause'),
-    'skip':  Action(style=ButtonStyle.blue, emoji='⏭', function='skip'),
-    'stop':  Action(style=ButtonStyle.blue, emoji='⏹', function='stop'),
-    'loop':  Action(style=ButtonStyle.blue, emoji='🔁', function='loop'),
-    'now':   Action(style=ButtonStyle.blue, emoji='🎶', function='now'),
-    'queue': Action(style=ButtonStyle.blue, emoji='📃', function='queue'),
+    'pause':   Action(style=ButtonStyle.blue, emoji='⏯', function='pause'),
+    'skip':    Action(style=ButtonStyle.blue, emoji='⏭', function='skip'),
+    'stop':    Action(style=ButtonStyle.blue, emoji='⏹', function='stop'),
+    'loop':    Action(style=ButtonStyle.blue, emoji='🔁', function='loop'),
+    'shuffle': Action(style=ButtonStyle.blue, emoji='🔀', function='shuffle'),
+    'now':     Action(style=ButtonStyle.blue, emoji='🎶', function='now'),
+    'queue':   Action(style=ButtonStyle.blue, emoji='📃', function='queue'),
+    'clear':   Action(style=ButtonStyle.blue, emoji='🧹', function='clear'),
 }
 infinite_action_list = {
     'spooky':   Action(emoji='👻', function='play_infinite'),
@@ -105,5 +107,9 @@ saved_action_list = {
 music_actions_list = {**controls_list, **infinite_action_list}
 
 saved_actions = create_actions(saved_action_list, 5)
-controls_actions = create_actions(controls_list)
-full_actions = controls_actions + create_actions(infinite_action_list)
+controls_actions = create_actions(controls_list, 4)
+full_actions = controls_actions + create_actions(infinite_action_list, 4)
+
+opening_action_list = {'new_opening':  Action(
+    style=ButtonStyle.gray, emoji='🔁', function='new_opening')}
+opening_actions = create_actions(opening_action_list)
