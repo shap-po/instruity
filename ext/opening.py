@@ -3,7 +3,8 @@ from discord_slash import SlashContext, ComponentContext, cog_ext
 import typing
 from bs4 import BeautifulSoup
 import re
-import cfscrape
+import cloudscraper
+from fake_useragent import UserAgent
 from discord_slash.utils.manage_commands import create_option
 import random
 import requests
@@ -16,8 +17,9 @@ ZERO_SPACE = '​'  # there is a space between quotes, believe me :)
 
 class OpeningCog(commands.Cog):
     session = requests.session()
-    scraper = cfscrape.create_scraper(
-        sess=session, proxies={'https_proxy': 'https://140.227.25.56:5678'})
+    ua = UserAgent()
+    session.headers = {'User-Agent': str(ua.chrome)}
+    scraper = cloudscraper.create_scraper(sess=session)
 
     def __init__(self, bot: commands.Bot, music_cog: MusicCog):
         self.music_cog = music_cog
