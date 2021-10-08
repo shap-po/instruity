@@ -8,7 +8,7 @@ from discord_slash.utils.manage_commands import create_option
 import random
 
 from utils import smart_send
-from ext.music import MusicCog, Song
+from ext.music import MusicCog, Song, SongException
 from .actions import opening_actions
 ZERO_SPACE = '​'  # there is a space between quotes, believe me
 
@@ -65,7 +65,7 @@ class OpeningCog(commands.Cog):
             return None
 
         ru_name = [i.text for i in s.findAll('h1')][0]
-        ru_name = re.search(r'\s*([\w ]+)\s*', ru_name)[1]
+        ru_name = re.search(r'\s*(.+)\s*', ru_name)[1]
         name = [names[0], ru_name]
 
         return name
@@ -101,9 +101,14 @@ class OpeningCog(commands.Cog):
             try:
                 song = await Song.create_source(
                     search=f'{anime[0]} opening', requester=self.bot.user, loop=self.bot.loop)
+            except SongException:
+                pass
             except Exception as e:
+                print(anime)
                 raise e
             else:
+                if isinstance(song, list):
+                    song = song[0]
                 break
 
         userids = ' '.join(userids)
