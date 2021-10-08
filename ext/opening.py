@@ -6,6 +6,7 @@ import re
 import cfscrape
 from discord_slash.utils.manage_commands import create_option
 import random
+import requests
 
 from utils import smart_send
 from ext.music import MusicCog, Song, SongException
@@ -14,7 +15,9 @@ ZERO_SPACE = '​'  # there is a space between quotes, believe me :)
 
 
 class OpeningCog(commands.Cog):
-    scraper = cfscrape.create_scraper()
+    session = requests.session()
+    scraper = cfscrape.create_scraper(
+        sess=session, proxies={'https_proxy': 'https://140.227.25.56:5678'})
 
     def __init__(self, bot: commands.Bot, music_cog: MusicCog):
         self.music_cog = music_cog
