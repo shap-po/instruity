@@ -88,7 +88,9 @@ class OpeningCog(commands.Cog):
         anime_list = [self.get_anime(userid) for userid in userids]
         anime_list = self.get_shared(anime_list)
         if len(anime_list) == 0:
-            await smart_send(ctx, 'Не найдено общих аниме для выбранных пользователей')
+            userids = ', '.join(userids)
+            await smart_send(ctx, f'Не найдено общих аниме для пользователей: [{userids}]')
+            return
 
         while True:
             anime = random.choice(anime_list)
