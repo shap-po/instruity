@@ -10,7 +10,7 @@ import random
 from utils import smart_send
 from ext.music import MusicCog, Song, SongException
 from .actions import opening_actions
-ZERO_SPACE = '​'  # there is a space between quotes, believe me
+ZERO_SPACE = '​'  # there is a space between quotes, believe me :)
 
 
 class OpeningCog(commands.Cog):
