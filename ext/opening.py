@@ -4,7 +4,6 @@ import typing
 from bs4 import BeautifulSoup
 import re
 import cloudscraper
-from fake_useragent import UserAgent
 from discord_slash.utils.manage_commands import create_option
 import random
 import requests
@@ -17,8 +16,12 @@ ZERO_SPACE = '​'  # there is a space between quotes, believe me :)
 
 class OpeningCog(commands.Cog):
     session = requests.session()
-    ua = UserAgent()
-    session.headers = {'User-Agent': str(ua.chrome)}
+    session.headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ru-ru,ru;q=0.8,en-us;q=0.5,en;q=0.3',
+        'Accept-Encoding': 'gzip, deflate',
+    }
     scraper = cloudscraper.create_scraper(sess=session)
 
     def __init__(self, bot: commands.Bot, music_cog: MusicCog):
