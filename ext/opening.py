@@ -85,7 +85,7 @@ class OpeningCog(commands.Cog):
             del lists[1]
         return lists[0]
 
-    async def run_quiz(self, ctx: typing.Union[SlashContext, ComponentContext], userids: typing.List[str]):
+    async def run_quiz(self, ctx: typing.Union[SlashContext, ComponentContext], userids: typing.List[str], listened: typing.Optional[typing.List[str]] = []):
         voice_client = self.music_cog.get_voice_client(ctx)
         if not await self.music_cog.ensure_voice_state(ctx, voice_client):
             return
@@ -96,12 +96,19 @@ class OpeningCog(commands.Cog):
         anime_list = [self.get_anime(userid) for userid in userids]
         anime_list = self.get_shared(anime_list)
         if len(anime_list) == 0:
-            userids = ', '.join(userids)
+            userids = ' '.join(userids)
             await smart_send(ctx, f'Не найдено общих аниме для пользователей: [{userids}]')
+            return
+        if len(anime_list) == len(listened):
+            userids = ' '.join(userids)
+            await smart_send(ctx, f'Все опенинги были прослушаны\nИнформация для бота: ||ids: {userids}||')
             return
 
         while True:
-            anime = random.choice(anime_list)
+            anime_id = random.randint(0, len(anime_list)-1)
+            if anime_id in listened:
+                continue
+            anime = anime_list[anime_id]
             if not anime:
                 continue
             anime = self.get_name(f'{self.URL}{anime}')
@@ -119,6 +126,7 @@ class OpeningCog(commands.Cog):
             else:
                 if isinstance(song, list):
                     song = song[0]
+                listened.append(anime_id)
                 break
 
         userids = ' '.join(userids)
@@ -126,7 +134,8 @@ class OpeningCog(commands.Cog):
             addition = '' if f'||{ZERO_SPACE}||' in ctx.origin_message.content else f'||{ZERO_SPACE}||'
         else:
             addition = ''
-        await smart_send(ctx, f'{addition}Запущен опенинг из аниме ||{anime[1]}||\nИнформация для бота: ||ids: {userids}||', components=opening_actions)
+        listened = ' '.join(map(str, listened))
+        await smart_send(ctx, f'{addition}Запущен опенинг из аниме ||{anime[1]}||\nИнформация для бота: ||ids: {userids}; listened: {listened}||', components=opening_actions)
 
         await voice_client.play(song)
 
@@ -173,11 +182,12 @@ class OpeningCog(commands.Cog):
 
     async def new_opening(self, ctx: ComponentContext):
         await ctx.defer(edit_origin=True)
-        userids = re.search(r'\|\|ids: ([^\|]+)\|\|',
-                            str(ctx.origin_message.content))
-        if not userids:
+        search = re.search(r'\|\|ids: ([^\|;]+); listened: ([^\|]+)\|\|',
+                           str(ctx.origin_message.content))
+        if not search:
             await smart_send(ctx, 'Произошла ошибка')
             return
-        userids = userids[1].split(' ')
+        userids = search[1].split(' ')
+        listened = list(map(int, search[2].split(' ')))
 
-        await self.run_quiz(ctx, userids)
+        await self.run_quiz(ctx, userids, listened)
