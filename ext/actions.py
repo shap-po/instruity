@@ -83,7 +83,7 @@ infinite_action_list = {
     'forest':   Action(emoji='🌲', function='play_infinite'),
     'magical':  Action(emoji='✨', function='play_infinite'),
     'relaxing': Action(emoji='😊', function='play_infinite'),
-    # 'epic':     Action(emoji='☠', function='play_infinite'),
+    'epic':     Action(emoji='☠', function='play_infinite'),
 
     'exit':     Action(emoji='🚫', function='exit_infinite'),
 }
