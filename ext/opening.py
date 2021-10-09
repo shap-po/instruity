@@ -16,13 +16,13 @@ ZERO_SPACE = '​'  # there is a space between quotes, believe me :)
 
 class OpeningCog(commands.Cog):
     session = requests.session()
-    session.headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ru-ru,ru;q=0.8,en-us;q=0.5,en;q=0.3',
-        'Accept-Encoding': 'gzip, deflate',
-    }
+    session.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+         (KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36'}
     scraper = cloudscraper.create_scraper(sess=session)
+    URL = 'https://yummyanime.info/'
+
+    if URL.endswith('/'):
+        URL = URL[:-1]
 
     def __init__(self, bot: commands.Bot, music_cog: MusicCog):
         self.music_cog = music_cog
@@ -39,7 +39,7 @@ class OpeningCog(commands.Cog):
 
     def get_anime(self, userid: str) -> typing.List[str]:
         r = self.scraper.get(
-            f'https://yummyanime.club/users/{userid}?tab=watched')
+            f'{self.URL}/users/{userid}?tab=watched')
         print(f'{r=}')
         s = BeautifulSoup(r.text, 'html.parser')
         print(f'{s=}')
@@ -106,7 +106,7 @@ class OpeningCog(commands.Cog):
             anime = random.choice(anime_list)
             if not anime:
                 continue
-            anime = self.get_name(f'https://yummyanime.club{anime}')
+            anime = self.get_name(f'{self.URL}{anime}')
             if not anime:
                 continue
 
