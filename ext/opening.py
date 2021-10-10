@@ -104,28 +104,30 @@ class OpeningCog(commands.Cog):
             await smart_send(ctx, f'Все опенинги были прослушаны\nИнформация для бота: ||ids: {userids}||')
             return
 
+        full_list = []+anime_list
+        for i in sorted(listened, reverse=True):
+            del anime_list[i]
+
         while True:
-            anime_id = random.randint(0, len(anime_list)-1)
-            if anime_id in listened:
+            anime_link = random.choice(anime_list)
+            if not anime_link:
                 continue
-            anime = anime_list[anime_id]
-            if not anime:
-                continue
-            anime = self.get_name(f'{self.URL}{anime}')
-            if not anime:
+            anime_name = self.get_name(f'{self.URL}{anime_link}')
+            if not anime_name:
                 continue
 
             try:
                 song = await Song.create_source(
-                    search=f'{anime[0]} opening', requester=self.bot.user, loop=self.bot.loop)
+                    search=f'{anime_name[0]} opening', requester=self.bot.user, loop=self.bot.loop)
             except SongException:
                 pass
             except Exception as e:
-                print(anime)
+                print(anime_name[0])
                 raise e
             else:
                 if isinstance(song, list):
                     song = song[0]
+                anime_id = full_list.index(anime_link)
                 listened.append(anime_id)
                 break
 
@@ -135,7 +137,7 @@ class OpeningCog(commands.Cog):
         else:
             addition = ''
         listened = ' '.join(map(str, listened))
-        await smart_send(ctx, f'{addition}Запущен опенинг из аниме ||{anime[1]}||\nИнформация для бота: ||ids: {userids}; listened: {listened}||', components=opening_actions)
+        await smart_send(ctx, f'{addition}Запущен опенинг из аниме ||{anime_name[1]}||\nИнформация для бота: ||ids: {userids}; listened: {listened}||', components=opening_actions)
 
         await voice_client.play(song)
 

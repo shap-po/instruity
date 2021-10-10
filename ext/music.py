@@ -114,11 +114,8 @@ class Song(discord.PCMVolumeTransformer):
 
         loop = loop or asyncio.get_event_loop()
 
-        if search.startswith('https://'):
-            search = search[len('https://'):]
-        if search.startswith('http://'):
-            search = search[len('http://'):]
-        search = search.replace(':', '')
+        if not search.startswith('https:') and not search.startswith('http:'):
+            search = search.replace(':', '')
 
         partial = functools.partial(
             cls.ytdl.extract_info, search, download=False)
@@ -408,8 +405,6 @@ class MusicCog(commands.Cog):
     @cog_ext.cog_slash(name='stop', description='Выключить музыку')
     async def stop(self, ctx: SlashContext):
         voice_client = self.get_voice_client(ctx)
-        if not await self.ensure_voice_state(ctx, voice_client):
-            return
 
         await voice_client.stop()
         del voice_client
