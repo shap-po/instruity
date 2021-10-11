@@ -1,7 +1,7 @@
 from discord.ext import commands
 from discord_slash import SlashContext, ComponentContext, cog_ext
 
-from utils import smart_send, is_admin
+from utils import smart_send
 from utils.actions import *
 from ext.music import MusicCog
 
