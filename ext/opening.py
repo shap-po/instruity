@@ -14,6 +14,24 @@ from .actions import opening_actions
 ZERO_SPACE = '​'  # there is a space between quotes, believe me :)
 
 
+class OpeningList:
+    def __init__(self, user_ids: typing.List[str], anime_list: typing.List[str]):
+        self.user_ids = user_ids
+        self.anime_list = anime_list
+
+    def remove(self, anime: str):
+        self.anime_list.remove(anime)
+
+    def random(self) -> str:
+        return random.choice(self.anime_list)
+
+    def __len__(self) -> int:
+        return len(self.anime_list)
+
+    def is_empty(self) -> bool:
+        return not bool(len(self))
+
+
 class OpeningCog(commands.Cog):
     session = requests.session()
     session.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
@@ -27,6 +45,7 @@ class OpeningCog(commands.Cog):
     def __init__(self, bot: commands.Bot, music_cog: MusicCog):
         self.music_cog = music_cog
         self.bot = bot
+        self.openings: typing.Dict[int, OpeningList] = {}
 
     @staticmethod
     def get_userids(links: typing.List[str]) -> typing.List[str]:
@@ -78,14 +97,21 @@ class OpeningCog(commands.Cog):
 
         return name
 
+    def get_openings(self, id: int) -> typing.Optional[OpeningList]:
+        return self.openings.get(id)
+
     @staticmethod
     def get_shared(lists: typing.List[list]) -> typing.List[str]:
         while len(lists) > 1:
-            lists[0] = list(set(lists[0]).intersection(lists[1]))
+            lists[0] = set(lists[0]).intersection(lists[1])
             del lists[1]
-        return lists[0]
+        return list(lists[0])
 
-    async def run_quiz(self, ctx: typing.Union[SlashContext, ComponentContext], userids: typing.List[str], listened: typing.Optional[typing.List[str]] = []):
+    @staticmethod
+    def get_all(lists: typing.List[list]) -> typing.List[str]:
+        return list({item for sublist in lists for item in sublist})
+
+    async def run_quiz(self, ctx: typing.Union[SlashContext, ComponentContext], userids: typing.Optional[typing.List[str]] = None, shared_only: typing.Optional[bool] = True, repeat: typing.Optional[bool] = False):
         voice_client = self.music_cog.get_voice_client(ctx)
         if not await self.music_cog.ensure_voice_state(ctx, voice_client):
             return
@@ -93,103 +119,114 @@ class OpeningCog(commands.Cog):
         if not voice_client.voice:
             await self.music_cog.join.invoke(ctx)
 
-        anime_list = [self.get_anime(userid) for userid in userids]
-        anime_list = self.get_shared(anime_list)
-        if len(anime_list) == 0:
-            userids = ' '.join(userids)
-            await smart_send(ctx, f'Не найдено общих аниме для пользователей: [{userids}]')
-            return
-        if len(anime_list) == len(listened):
-            userids = ' '.join(userids)
-            await smart_send(ctx, f'Все опенинги были прослушаны\nИнформация для бота: ||ids: {userids}||')
-            return
+        str_userids = ' '.join(userids)
+        bot_info = f'\nИнформация для бота: ||ids: {str_userids}; shared: {int(shared_only)}; repeat: {int(repeat)}||'
 
-        full_list = []+anime_list
-        for i in sorted(listened, reverse=True):
-            del anime_list[i]
+        if isinstance(ctx, ComponentContext):
+            opening_list = self.get_openings(ctx.origin_message.id)
+        else:
+            opening_list = None
+        if opening_list is None:
+            if not userids:
+                await smart_send(ctx, f'К сожалению, эта кнопка больше не работает, команду придется использовать снова.')
+                return
+            anime_list = [self.get_anime(userid) for userid in userids]
+            if not all(anime_list):
+                userids = ' '.join(userids)
+                await smart_send(ctx, f'Один из пользователей не смотрит аниме :({bot_info}')
+                return
+            if shared_only:
+                anime_list = self.get_shared(anime_list)
+            else:
+                anime_list = self.get_all(anime_list)
+            if not len(anime_list):
+                userids = ' '.join(userids)
+                await smart_send(ctx, f'Не найдено общих аниме для выбранных пользователей{bot_info}')
+                return
+            opening_list = OpeningList(userids, anime_list)
 
         while True:
-            anime_link = random.choice(anime_list)
+            if opening_list.is_empty():
+                await smart_send(ctx, f'Все опенинги были прослушаны, если хотите чтоб они повторялись - укажите "repeat=True"{bot_info}', components=opening_actions)
+                try:
+                    del self.openings[ctx.origin_message.id]
+                except:
+                    pass
+                return
+            anime_link = opening_list.random()
             if not anime_link:
                 continue
             anime_name = self.get_name(f'{self.URL}{anime_link}')
             if not anime_name:
+                opening_list.remove(anime_link)
                 continue
 
             try:
                 song = await Song.create_source(
                     search=f'{anime_name[0]} opening', requester=self.bot.user, loop=self.bot.loop)
             except SongException:
-                pass
+                opening_list.remove(anime_link)
             except Exception as e:
                 print(anime_name[0])
                 raise e
             else:
                 if isinstance(song, list):
                     song = song[0]
-                anime_id = full_list.index(anime_link)
-                listened.append(anime_id)
+                if not repeat:
+                    opening_list.remove(anime_link)
                 break
 
         userids = ' '.join(userids)
         if isinstance(ctx, ComponentContext):  # add empty spoiler to hide anime name
-            addition = '' if f'||{ZERO_SPACE}||' in ctx.origin_message.content else f'||{ZERO_SPACE}||'
+            spoiler = '' if f'||{ZERO_SPACE}||' in ctx.origin_message.content else f'||{ZERO_SPACE}||'
         else:
-            addition = ''
-        listened = ' '.join(map(str, listened))
-        await smart_send(ctx, f'{addition}Запущен опенинг из аниме ||{anime_name[1]}||\nИнформация для бота: ||ids: {userids}; listened: {listened}||', components=opening_actions)
-
+            spoiler = ''
+        message = await smart_send(ctx, f'{spoiler}Запущен опенинг из аниме ||{anime_name[1]}||{bot_info}', components=opening_actions)
+        self.openings[message.id] = opening_list
         await voice_client.play(song)
 
-    @cog_ext.cog_slash(name='opening', description='Включить случайный опенинг (выбираются только аниме, которые смотрели все)',
+    @cog_ext.cog_slash(name='opening', description='Включить случайный опенинг',
                        options=[
                            create_option(
-                               name='link',
-                               description='Ссылка на профиль',
+                               name='links',
+                               description='Одна или более ссылка на профиль, разделенные пробелами',
                                option_type=str,
                                required=True
                            ),
                            create_option(
-                               name='link2',
-                               description='Ссылка на профиль',
-                               option_type=str,
+                               name='shared_only',
+                               description='Включать только опенинги к аниме, которые смотрели все',
+                               option_type=bool,
                                required=False
                            ),
                            create_option(
-                               name='link3',
-                               description='Ссылка на профиль',
-                               option_type=str,
-                               required=False
-                           ),
-                           create_option(
-                               name='link4',
-                               description='Ссылка на профиль',
-                               option_type=str,
-                               required=False
-                           ),
-                           create_option(
-                               name='link5',
-                               description='Ссылка на профиль',
-                               option_type=str,
+                               name='repeat',
+                               description='Могут ли опенинги повторяться',
+                               option_type=bool,
                                required=False
                            )
                        ])
-    async def opening(self, ctx: SlashContext, **links: typing.Dict[str, str]):
+    async def opening(self, ctx: SlashContext, links: str, shared_only: bool = True, repeat: bool = False):
         await ctx.defer()
-        userids = self.get_userids(list(links.values()))
+        userids = self.get_userids(links.split(' '))
         if not len(userids):
             await smart_send(ctx, 'Кривая ссылка, нужно в профиле (https://yummyanime.club/profile) тыкнуть "Ссылка на этот профиль"')
             return
-        await self.run_quiz(ctx, userids)
+        await self.run_quiz(ctx, userids, shared_only, repeat)
 
     async def new_opening(self, ctx: ComponentContext):
         await ctx.defer(edit_origin=True)
-        search = re.search(r'\|\|ids: ([^\|;]+); listened: ([^\|]+)\|\|',
+        content = r'([^\|;]+)'
+        search = re.search(rf'\|\|ids: {content}; shared: {content}; repeat: {content}\|\|',
                            str(ctx.origin_message.content))
-        if not search:
-            await smart_send(ctx, 'Произошла ошибка')
-            return
-        userids = search[1].split(' ')
-        listened = list(map(int, search[2].split(' ')))
 
-        await self.run_quiz(ctx, userids, listened)
+        if search:
+            userids = search[1].split(' ')
+            shared_only = bool(int(search[2]))
+            repeat = bool(int(search[3]))
+        else:
+            userids = None
+            shared_only = True
+            repeat = False
+
+        await self.run_quiz(ctx, userids, shared_only, repeat)
