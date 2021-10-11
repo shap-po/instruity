@@ -119,11 +119,24 @@ class Song(discord.PCMVolumeTransformer):
 
         partial = functools.partial(
             cls.ytdl.extract_info, search, download=False)
-        processed_info = await loop.run_in_executor(None, partial)
+
+        try_count = 0
+        while True:
+            try:
+                processed_info = await loop.run_in_executor(None, partial)
+            except:
+                if try_count < 2:  # try get song 2 times, otherwise - give exception
+                    try_count += 1
+                    await asyncio.sleep(0.1)
+                    continue
+                raise SongException(
+                    f'Возникла ошибка при попытке получить трек по запросу "{search}"')
+            else:
+                break
 
         if processed_info is None:
             raise SongException(
-                f'Не удалось получить аудио по запросу: "{search}"')
+                f'Не удалось получить аудио по запросу "{search}"')
 
         if 'entries' not in processed_info:
             info = processed_info
@@ -135,7 +148,7 @@ class Song(discord.PCMVolumeTransformer):
 
             if len(playlist) == 0:
                 raise SongException(
-                    f'Не удалось найти ничего по запросу: "{search}"')
+                    f'Не удалось найти ничего по запросу "{search}"')
 
             return [cls(requester, data=info, infinite=infinite) for info in playlist]
 
