@@ -1,3 +1,4 @@
+import os
 import discord
 from discord.ext import commands
 from discord_slash import SlashCommand, SlashContext, ComponentContext
@@ -60,7 +61,7 @@ actions = {**controls_list, **infinite_action_list,
 
 if __name__ == '__main__':
     with open('token.txt', 'r') as f:
-        token = f.read()
+        token = os.environ('TOKEN')
 else:
     with open('../test-token.txt', 'r') as f:
         token = f.read()
