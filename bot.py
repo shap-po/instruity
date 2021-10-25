@@ -60,7 +60,7 @@ actions = {**controls_list, **infinite_action_list,
            **saved_action_list, **opening_action_list}
 
 if __name__ == '__main__':
-    token = os.environ('TOKEN')
+    token = os.environ['TOKEN']
 else:
     with open('../test-token.txt', 'r') as f:
         token = f.read()
