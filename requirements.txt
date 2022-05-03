@@ -3,5 +3,3 @@ youtube_dl
 async_timeout
 discord
 PyNaCl>=1.3.0,<1.6
-beautifulsoup4
-cloudscraper
