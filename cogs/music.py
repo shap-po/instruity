@@ -174,39 +174,35 @@ class Song(discord.PCMVolumeTransformer):
         hours, minutes = divmod(minutes, 60)
         days, hours = divmod(hours, 24)
 
+        def duration_check(d: str) -> int:
+            if d[-1] == 1 and (d[0] != 1 or len(d) == 1):
+                return 0
+            elif d[-1] in '234' and (d[0] != 1 or len(d) == 1):
+                return 1
+            else:
+                return 2
+
         output = []
         if days > 0:
             days = str(days)
-            if days[-1] == 1 and days[0] != 1:
-                output.append(f'{days} день')
-            elif days[-1] in '234' and days[0] != 1:
-                output.append(f'{days} дні')
-            else:
-                output.append(f'{days} днів')
+            output.append([f'{days} день',
+                           f'{days} дні',
+                          f'{days} днів'][duration_check(days)])
         if hours > 0:
             hours = str(hours)
-            if hours[-1] == 1 and hours[0] != 1:
-                output.append(f'{hours} година')
-            elif hours[-1] in '234' and hours[0] != 1:
-                output.append(f'{hours} години')
-            else:
-                output.append(f'{hours} годин')
+            output.append([f'{hours} година',
+                           f'{hours} години',
+                          f'{hours} годин'][duration_check(hours)])
         if minutes > 0:
             minutes = str(minutes)
-            if minutes[-1] == 1 and minutes[0] != 1:
-                output.append(f'{minutes} хвилина')
-            elif minutes[-1] in '234' and minutes[0] != 1:
-                output.append(f'{minutes} хвилини')
-            else:
-                output.append(f'{minutes} хвилин')
+            output.append([f'{minutes} хвилина',
+                           f'{minutes} хвилини',
+                          f'{minutes} хвилин'][duration_check(minutes)])
         if seconds > 0:
             seconds = str(seconds)
-            if seconds[-1] == 1 and seconds[0] != 1:
-                output.append(f'{seconds} секунда')
-            elif seconds[-1] in '234' and seconds[0] != 1:
-                output.append(f'{seconds} секунди')
-            else:
-                output.append(f'{seconds} секунд')
+            output.append([f'{seconds} секунда',
+                           f'{seconds} секунди',
+                          f'{seconds} секунд'][duration_check(seconds)])
 
         return ' '.join(output)
 
