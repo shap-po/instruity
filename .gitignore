@@ -1,5 +1,4 @@
 __pycache__/
-ext/__pycache__/
-playlists/__pycache__/
-utils/__pycache__/
+*.pyc
+*.bat
 token.txt

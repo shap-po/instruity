@@ -1,33 +1,24 @@
-import typing
-from discord_slash import ComponentContext
-from discord_slash.dpy_overrides import ComponentMessage
-from discord_slash.model import SlashMessage
-from discord.ext.commands import Context
 from discord import Member
-
-from utils.setup import *
-from utils.actions import *
+import discord
 
 
-async def smart_send(ctx: typing.Union[Context, ComponentContext], *args, do_not_edit=False, **kwargs) -> typing.Optional[typing.Union[SlashMessage, ComponentMessage]]:
-    """Send message or edit origin. Better version of something like:
+async def smart_send(interaction: discord.Interaction, *args, **kwargs) -> None:
+    """Send message or edit origin."""
+    # if interaction is a button - send message which will be deleted after 10 seconds
+    if interaction.data.get('custom_id'):
+        await interaction.channel.send(*args, **kwargs, delete_after=10)
+        if not interaction.response._responded:
+            try:
+                await interaction.response.send_message()
+            except:
+                # response will raise an error because of empty message, but it's ok
+                pass
+        return
 
-    if isinstance(ctx, Context):
-        await ctx.send(msg)
+    if interaction.response._responded:
+        await interaction.followup.send(*args, **kwargs)
     else:
-        await ctx.edit_origin(msg)
-    """
-    if isinstance(ctx, ComponentContext) and not do_not_edit:
-        if not 'content' in kwargs:
-            if len(args) == 0:
-                if not 'delete_after' in kwargs:
-                    kwargs['delete_after'] = 10
-                return await ctx.send(*args, **kwargs)
-            kwargs['content'] = args[0]
-        await ctx.edit_origin(content=kwargs['content'])
-        return ctx.origin_message
-    else:
-        return await ctx.send(*args, **kwargs)
+        await interaction.response.send_message(*args, **kwargs)
 
 
 def is_admin(member: Member) -> bool:
