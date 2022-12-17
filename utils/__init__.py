@@ -5,18 +5,14 @@ import discord
 async def smart_send(interaction: discord.Interaction, *args, **kwargs) -> None:
     """Send message or edit origin."""
     # if interaction is a button - send message which will be deleted after 10 seconds
-    if interaction.data.get('custom_id'):
+    if interaction.data and interaction.data.get('custom_id'):
         await interaction.channel.send(*args, **kwargs, delete_after=10)
-        if not interaction.response._responded:
-            try:
-                await interaction.response.send_message()
-            except:
-                # response will raise an error because of empty message, but it's ok
-                pass
+        if not interaction.response.is_done():
+            await interaction.response.send_message()  # mark interaction as complete
         return
 
-    if interaction.response._responded:
-        await interaction.followup.send(*args, **kwargs)
+    if interaction.response.is_done():
+        await interaction.edit_original_response(*args, **kwargs)
     else:
         await interaction.response.send_message(*args, **kwargs)
 

@@ -10,6 +10,13 @@ from discord.ext import commands
 from discord import app_commands
 from async_timeout import timeout
 
+# handling exceptions
+try:
+    from rich import print
+except:
+    pass
+import traceback
+
 from utils import smart_send, is_admin
 
 DEFAULT_VOLUME = 0.35
@@ -311,6 +318,15 @@ class MusicCog(commands.Cog):
         async def on_interaction(interaction: discord.interactions.Interaction) -> None:
             await self.interaction_listener(interaction)
 
+    # for some reason, cog is just ignoring all the exceptions, raised inside, so here is a custom error handler
+    def cog_app_command_error(self, ctx, error):
+        print(traceback.format_exc())
+        return super().cog_app_command_error(ctx, error)
+
+    def cog_command_error(self, ctx, error):
+        print(traceback.format_exc())
+        return super().cog_command_error(ctx, error)
+
     def get_voice_client(self, interaction: discord.Interaction) -> VoiceClient:
         """Get a voice client or create a new one."""
         client = self.voice_clients.get(interaction.guild.id)
@@ -325,7 +341,7 @@ class MusicCog(commands.Cog):
 
     async def ensure_voice_state(self, interaction: discord.Interaction, voice_client: VoiceClient) -> bool:
         """Ensure that the voice state is valid.
-        If not, parrent function should stop it's execution."""
+        If not, parent function should stop it's execution."""
 
         if not interaction.user.voice:
             await smart_send(interaction, content='Для використання цієї команди потрібно бути в голосовому каналі')
