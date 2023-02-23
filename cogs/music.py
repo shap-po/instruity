@@ -5,7 +5,7 @@ import typing
 import discord
 import itertools
 import random
-import youtube_dl
+import yt_dlp
 from discord.ext import commands
 from discord import app_commands
 from async_timeout import timeout
@@ -52,7 +52,7 @@ RANDOM_FOOTERS = [
 ]
 RANDOM_FOOTER_CHANCE = 0.1
 
-youtube_dl.utils.bug_reports_message = lambda: ''
+yt_dlp.utils.bug_reports_message = lambda: ''
 
 
 class SongException(Exception):
@@ -91,7 +91,7 @@ class SongQueue(asyncio.Queue):
 
 class Song(discord.PCMVolumeTransformer):
     """An object that contains basic info about song and can be used in player as music source."""
-    ytdl = youtube_dl.YoutubeDL(YTDL_OPTIONS)
+    ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 
     def __init__(self, requester: discord.Member, data: dict, volume: float = DEFAULT_VOLUME):
         self.uploader = data.get('uploader')
@@ -175,7 +175,7 @@ class Song(discord.PCMVolumeTransformer):
             duration (int)
 
         Returns:
-            str: Formated duration.
+            str: Formatted duration.
         """
         minutes, seconds = divmod(duration, 60)
         hours, minutes = divmod(minutes, 60)
