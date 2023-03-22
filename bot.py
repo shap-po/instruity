@@ -5,13 +5,15 @@ from discord.ext import commands
 
 from cogs import MusicCog
 
-bot = commands.Bot('-', intents=discord.Intents.default())
+intents = discord.Intents.default()
+bot = commands.Bot('-', intents=intents)
 
 
-@ bot.event
+@bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
     await bot.tree.sync()
+    print('Synced commands tree')
 
 
 async def main(token: str):

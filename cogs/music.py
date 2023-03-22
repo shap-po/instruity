@@ -167,7 +167,7 @@ class Song(discord.PCMVolumeTransformer):
         super().__init__(discord.FFmpegPCMAudio(
             self.stream_url, **FFMPEG_OPTIONS), self.volume)
 
-    @ staticmethod
+    @staticmethod
     def parse_duration(duration: int) -> str:
         """Parse duration into a string.
 
@@ -252,7 +252,7 @@ class VoiceClient:
     def __del__(self):
         self.audio_player.cancel()
 
-    @ property
+    @property
     def is_playing(self) -> bool:
         return self.voice and self.current
 
@@ -382,7 +382,7 @@ class MusicCog(commands.Cog):
         elif custom_id == 'clear':
             await self.clear(interaction)
 
-    @ staticmethod
+    @staticmethod
     def is_dj(member: discord.Member) -> bool:
         for role in member.roles:
             if role.name.lower() == "dj":
@@ -555,51 +555,51 @@ class MusicCog(commands.Cog):
 
     # define commands
 
-    @ app_commands.command(name='join', description='Приєднати бота до голосового каналу')
+    @app_commands.command(name='join', description='Приєднати бота до голосового каналу')
     async def join_cmd(self, interaction: discord.Interaction):
         await self.join(interaction)
 
-    @ app_commands.command(name='play', description='Додати пісню в чергу')
+    @app_commands.command(name='play', description='Додати пісню в чергу')
     async def play_cmd(self, interaction: discord.Interaction, search: str):
         await self.play(interaction, search)
 
-    @ app_commands.command(name='stop', description='Вимкнути музику')
+    @app_commands.command(name='stop', description='Вимкнути музику')
     async def stop_cmd(self, interaction: discord.Interaction):
         await self.stop(interaction)
 
-    @ app_commands.command(name='skip', description='Пропустити трек')
+    @app_commands.command(name='skip', description='Пропустити трек')
     async def skip_cmd(self, interaction: discord.Interaction):
         await self.skip(interaction)
 
-    @ app_commands.command(name='shuffle', description='Перемішати чергу')
+    @app_commands.command(name='shuffle', description='Перемішати чергу')
     async def shuffle_cmd(self, interaction: discord.Interaction):
         await self.shuffle(interaction)
 
-    @ app_commands.command(name='loop', description='Увімкнути/вимкнути повторення треку')
+    @app_commands.command(name='loop', description='Увімкнути/вимкнути повторення треку')
     async def loop_cmd(self, interaction: discord.Interaction):
         await self.loop(interaction)
 
-    @ app_commands.command(name='now', description='Відобразити назву треку, який зараз відтворюється')
+    @app_commands.command(name='now', description='Відобразити назву треку, який зараз відтворюється')
     async def now_cmd(self, interaction: discord.Interaction):
         await self.now(interaction)
 
-    @ app_commands.command(name='pause', description='Поставити музику на паузу')
+    @app_commands.command(name='pause', description='Поставити музику на паузу')
     async def pause_cmd(self, interaction: discord.Interaction):
         await self.pause(interaction)
 
-    @ app_commands.command(name='queue', description='Відобразити чергу')
+    @app_commands.command(name='queue', description='Відобразити чергу')
     async def queue_cmd(self, interaction: discord.Interaction, page: int = 1):
         await self.queue(interaction, page)
 
-    @ app_commands.command(name='volume', description='Встановіть гучність бота')
+    @app_commands.command(name='volume', description='Встановіть гучність бота')
     async def volume_cmd(self, interaction: discord.Interaction, volume: int):
         await self.volume(interaction, volume)
 
-    @ app_commands.command(name='clear', description='Очистіть чергу')
+    @app_commands.command(name='clear', description='Очистити чергу')
     async def clear_cmd(self, interaction: discord.Interaction):
         await self.clear(interaction)
 
-    @ app_commands.command(name='actions', description='Відобразити кнопки')
+    @app_commands.command(name='actions', description='Показати кнопки')
     async def actions_cmd(self, interaction: discord.Interaction):
         await self.actions(interaction)
 
