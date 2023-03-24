@@ -406,22 +406,26 @@ class MusicCog(commands.Cog):
             return
 
         if not voice_client.voice:
+            # should set voice_client.voice to a joined voice client
             await self.join(interaction)
 
-        if voice_client.voice:
-            await interaction.response.defer(thinking=True)
-            try:
-                songs = await Song.create_source(search=search, requester=interaction.user, loop=self.bot.loop)
-            except SongException as e:
-                await smart_send(interaction, content=str(e))
+        if not voice_client.voice:
+            await smart_send(interaction, content=f'Не вдалося приєднатися до голосового каналу')
+            return
+
+        await interaction.response.defer(thinking=True)
+        try:
+            songs = await Song.create_source(search=search, requester=interaction.user, loop=self.bot.loop)
+        except SongException as e:
+            await smart_send(interaction, content=str(e))
+        else:
+            if len(songs) > 1:
+                await smart_send(interaction, content=f'{len(songs)} треків додано в чергу')
+            elif len(songs) == 1:
+                await smart_send(interaction, content=f'Трек {songs[0]} додано в чергу')
             else:
-                if len(songs) > 1:
-                    await smart_send(interaction, content=f'{len(songs)} треків додано в чергу')
-                elif len(songs) == 1:
-                    await smart_send(interaction, content=f'Трек {songs[0]} додано в чергу')
-                else:
-                    return
-                await voice_client.queue.add(songs)
+                return
+            await voice_client.queue.add(songs)
 
     async def stop(self, interaction: discord.Interaction) -> None:
         voice_client = self.get_voice_client(interaction)
