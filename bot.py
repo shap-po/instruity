@@ -21,9 +21,12 @@ async def main(token: str):
     await bot.add_cog(music_cog)
     await bot.start(token)
 
-if __name__ == '__main__':
-    token = os.environ['TOKEN']
-else:
-    with open('../test-token.txt', 'r') as f:
-        token = f.read()
+token = os.environ.get('TOKEN')
+if not token:
+    try:
+        with open('token.txt', 'r') as f:
+            token = f.read()
+    except FileNotFoundError:
+        print('Token not found. Either set the TOKEN environment variable or create a file called "token.txt" with the token in it.')
+        exit(1)
 asyncio.run(main(token))
