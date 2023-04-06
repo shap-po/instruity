@@ -487,7 +487,7 @@ class MusicCog(commands.Cog):
             return await smart_send(interaction, content='На даний момент нічого не грає')
 
         voice_client.loop = not voice_client.loop
-        await smart_send(interaction, content=f'Тепер трек {"не "*int(not voice_client.loop)}буде повторяться')
+        await smart_send(interaction, content=f'Повторення треку {"ввімкнено ✅" if voice_client.loop else "вимкнено ❌"}')
 
     async def now(self, interaction: discord.Interaction) -> None:
         voice_client = self.get_voice_client(interaction)
