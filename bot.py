@@ -8,12 +8,12 @@ from cogs import MusicCog
 
 class Bot(commands.Bot):
     def __init__(self, token: str, **kwargs):
-        if not kwargs.get('command_prefix'):
-            kwargs['command_prefix'] = '!'
-        if not kwargs.get('intents'):
-            kwargs['intents'] = discord.Intents.default()
-
-        super().__init__(**kwargs)
+        super().__init__(**{
+            'command_prefix': '!',
+            'intents': discord.Intents.default(),
+            'help_command': None,
+            **kwargs
+        })
         self.token = token
 
     async def wrapped_connect(self):
