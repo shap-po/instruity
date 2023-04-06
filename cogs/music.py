@@ -384,6 +384,10 @@ class MusicCog(commands.Cog):
         elif custom_id == 'clear':
             await self.clear(interaction)
 
+        elif custom_id.startswith('play_again_'):
+            url = custom_id[11:]
+            await self.play(interaction, url)
+
     @staticmethod
     def is_dj(member: discord.Member) -> bool:
         for role in member.roles:
@@ -424,7 +428,7 @@ class MusicCog(commands.Cog):
             if len(songs) > 1:
                 await smart_send(interaction, content=f'{len(songs)} треків додано в чергу')
             elif len(songs) == 1:
-                await smart_send(interaction, content=f'Трек {songs[0]} додано в чергу')
+                await smart_send(interaction, content=f'Трек {songs[0]} додано в чергу', view=PlayAgainView(songs[0].url))
             else:
                 return
             await voice_client.queue.add(songs)
@@ -632,3 +636,10 @@ class ActionView(discord.ui.View):
                 button.style = discord.ButtonStyle.blurple
                 button.row = row
                 self.add_item(button)
+
+
+class PlayAgainView(discord.ui.View):
+    def __init__(self, song: str):
+        super().__init__()
+        self.add_item(discord.ui.Button(
+            emoji='🔁', custom_id=f'play_again_{song}', style=discord.ButtonStyle.blurple))
