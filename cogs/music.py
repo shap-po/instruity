@@ -24,7 +24,6 @@ DEFAULT_VOLUME = 0.35
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'extractaudio': True,
-    'audioformat': 'mp3',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': False,
@@ -44,12 +43,9 @@ FFMPEG_OPTIONS = {
 }
 
 RANDOM_FOOTERS = [
-    {'text': 'путін хуйло'},
     {'text': 'Слава Україні!'},
-    {'text': 'Російський воєнний корабель - іди нахуй!'},
     {'text': 'J̵̩͗ȗ̴̳s̴̰̍t̵̲́ ̸̤͛M̴̱͝ỏ̵͙n̵̛̦į̵͊k̵̪̾ä̷̜́'},
     {'text': 'паралелепіпед'},
-    {'text': 'паляниця'},
     {'text': 'amogus', 'icon_url': 'https://static.wikia.nocookie.net/amogus/images/c/cb/Susremaster.png/revision/latest/scale-to-width-down/1200?cb=20210806124552'},
 ]
 RANDOM_FOOTER_CHANCE = 0.1
@@ -274,6 +270,9 @@ class VoiceClient:
                     return
 
             self.current.volume = self.volume
+            if not self.voice:
+                self.bot.loop.create_task(self.stop())
+                return
             self.voice.play(self.current, after=self.play_next_song)
 
             await self.play_next.wait()
@@ -320,7 +319,7 @@ class MusicCog(commands.Cog):
         async def on_interaction(interaction: discord.interactions.Interaction) -> None:
             await self.interaction_listener(interaction)
 
-    # for some reason, cog is just ignoring all the exceptions, raised inside, so here is a custom error handler
+    # for some reason, cog is just ignoring all the exceptions, raised inside, so here is a custom error handlers
     def cog_app_command_error(self, ctx, error):
         print(traceback.format_exc())
         return super().cog_app_command_error(ctx, error)
@@ -388,6 +387,11 @@ class MusicCog(commands.Cog):
             url = custom_id[11:]
             await self.play(interaction, url)
 
+        elif custom_id.startswith('play_silent_again_'):
+            url = custom_id[18:]
+            await self.play(interaction, url, silent=True)
+            await interaction.response.edit_message(content='Let\'s start the party!')
+
     @staticmethod
     def is_dj(member: discord.Member) -> bool:
         for role in member.roles:
@@ -406,32 +410,39 @@ class MusicCog(commands.Cog):
         else:
             voice_client.voice = await destination.connect()
 
-    async def play(self, interaction: discord.Interaction, search: str) -> None:
+    async def play(self, interaction: discord.Interaction, search: str, silent=False) -> bool:
         voice_client = self.get_voice_client(interaction)
         if not await self.ensure_voice_state(interaction, voice_client):
-            return
+            return False
 
         if not voice_client.voice:
             # should set voice_client.voice to a joined voice client
             await self.join(interaction)
 
         if not voice_client.voice:
-            await smart_send(interaction, content=f'Не вдалося приєднатися до голосового каналу')
-            return
+            if not silent:
+                await smart_send(interaction, content=f'Не вдалося приєднатися до голосового каналу')
+            return False
 
-        await interaction.response.defer(thinking=True)
+        if not silent:
+            await interaction.response.defer(thinking=True)
         try:
             songs = await Song.create_source(search=search, requester=interaction.user, loop=self.bot.loop)
         except SongException as e:
-            await smart_send(interaction, content=str(e))
+            if not silent:
+                await smart_send(interaction, content=str(e))
+            return False
         else:
             if len(songs) > 1:
-                await smart_send(interaction, content=f'{len(songs)} треків додано в чергу')
+                if not silent:
+                    await smart_send(interaction, content=f'{len(songs)} треків додано в чергу')
             elif len(songs) == 1:
-                await smart_send(interaction, content=f'Трек {songs[0]} додано в чергу', view=PlayAgainView(songs[0].url))
+                if not silent:
+                    await smart_send(interaction, content=f'Трек {songs[0]} додано в чергу', view=PlayAgainView(songs[0].url))
             else:
-                return
+                return False
             await voice_client.queue.add(songs)
+        return True
 
     async def stop(self, interaction: discord.Interaction) -> None:
         voice_client = self.get_voice_client(interaction)
@@ -563,6 +574,20 @@ class MusicCog(commands.Cog):
     async def actions(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(content='Доступні команди:', view=ActionView())
 
+    async def perform(self, interaction: discord.Interaction) -> None:
+        """Play a song, associated with bot's speciality field, if it exists."""
+        # if bot has speciality field
+        if not hasattr(self.bot, 'speciality'):
+            await smart_send(interaction, content='Я не маю спеціальності', ephemeral=True)
+            return
+
+        await interaction.response.defer(thinking=True)
+        success = await self.play(interaction, self.bot.speciality, silent=True)
+        if not success:
+            await smart_send(interaction, content='Не вдалося відтворити музику')
+            return
+        await smart_send(interaction, content='Let\'s start the party!', view=PlayAgainView(self.bot.speciality, silent=True))
+
     # define commands
 
     @app_commands.command(name='join', description='Приєднати бота до голосового каналу')
@@ -613,6 +638,10 @@ class MusicCog(commands.Cog):
     async def actions_cmd(self, interaction: discord.Interaction):
         await self.actions(interaction)
 
+    @app_commands.command(name='perform', description='Відтворити особливу музику')
+    async def perform_cmd(self, interaction: discord.Interaction):
+        await self.perform(interaction)
+
 
 class ActionView(discord.ui.View):
     def __init__(self):
@@ -639,7 +668,13 @@ class ActionView(discord.ui.View):
 
 
 class PlayAgainView(discord.ui.View):
-    def __init__(self, song: str):
+    def __init__(self, song: str, silent=False):
         super().__init__()
-        self.add_item(discord.ui.Button(
-            emoji='🔁', custom_id=f'play_again_{song}', style=discord.ButtonStyle.blurple))
+        custom_id = f'play_again_{song}' if not silent else f'play_silent_again_{song}'
+        self.add_item(
+            discord.ui.Button(
+                emoji='🔁',
+                custom_id=custom_id,
+                style=discord.ButtonStyle.blurple,
+            )
+        )

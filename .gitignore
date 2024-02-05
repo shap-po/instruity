@@ -1,5 +1,8 @@
 __pycache__/
+.venv/
 *.pyc
 *.bat
+.env
+# old token files
 token.txt
 tokens.txt
