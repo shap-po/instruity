@@ -70,6 +70,10 @@ class SongQueue(asyncio.Queue):
         return self.qsize()
 
     def clear(self):
+        # loop through all the items in the queue and cancel them
+        for item in list(self._queue):
+            if isinstance(item, Song):
+                item.in_queue = False
         self._queue.clear()
 
     def shuffle(self):
@@ -99,7 +103,10 @@ class TaskList:
     async def run(self):
         while len(self._tasks) > 0:
             task = self._tasks.pop(0)
-            await task
+            try:
+                await task
+            except Exception as e:
+                continue
 
 
 class Song:
@@ -129,6 +136,9 @@ class Song:
 
         self.is_loaded = self.stream_url is not None
         self.is_loading = False
+        self.error = None
+        self.in_queue = True
+
         self.requester = requester
         self.skip_votes = set()
         self.volume = volume
@@ -184,18 +194,8 @@ class Song:
 
         if 'entries' in processed_info:
             songs = processed_info['entries']
-            first_song = next(songs, None)
         else:
             songs = [processed_info]
-            first_song = songs.pop(0)
-
-        if first_song is None:
-            raise SongException(f'Не вдалося знайти нічого за запитом "{search}"')
-
-        first_song = self(requester, data=first_song)
-        await first_song.load()  # preload the first song before yielding it
-
-        yield first_song
 
         tasks = TaskList()
         for song in songs:
@@ -203,7 +203,7 @@ class Song:
             tasks.add(song.load())
             yield song
 
-        # load the rest of the songs one by one
+        # load the songs one by one
         loop.create_task(tasks.run())
 
     def restart(self) -> None:
@@ -215,8 +215,9 @@ class Song:
 
     async def load(self) -> None:
         """Retrieve the stream URL of the song."""
-        if self.is_loading or self.is_loaded:
-            return  # skip if already loading or loaded
+
+        if self.is_loading or self.is_loaded or self.error is not None or self.in_queue is False:
+            return
 
         self.is_loading = True
 
@@ -229,9 +230,11 @@ class Song:
         try:
             info = await loop.run_in_executor(None, partial)
         except:
+            self.error = True
             raise SongException(f'Не вдалося отримати аудіо за посиланням "{self.url}"')
         self.stream_url = info.get('url')
         self.thumbnail = info.get('thumbnail')
+
         self.is_loading = False
         self.is_loaded = True
 
@@ -345,12 +348,16 @@ class VoiceClient:
 
             # load the song if it's not loaded
             try:
-                async with timeout(30):  # 30 seconds
+                async with timeout(60):
                     await self.current.load()
                     while not self.current.is_loaded:
                         pass
             except asyncio.TimeoutError:
-                # skip the song
+                # song loading took too long, skip it
+                continue
+            except SongException as e:
+                # song failed to load, skip it
+                print(e)
                 continue
 
             # update song player
