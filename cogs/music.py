@@ -341,11 +341,6 @@ class VoiceClient:
                     self.bot.loop.create_task(self.stop())
                     return
 
-            # ensure that the voice client is connected
-            if not self.voice:
-                self.bot.loop.create_task(self.stop())
-                return
-
             # load the song if it's not loaded
             try:
                 async with timeout(60):
@@ -363,6 +358,11 @@ class VoiceClient:
             # update song player
             self.current.restart()
             self.current.volume = self.volume
+
+            # ensure that the voice client is connected
+            if not self.voice:
+                self.bot.loop.create_task(self.stop())
+                return
 
             # play the song
             self.voice.play(self.current.transformer, after=self.play_next_song)
