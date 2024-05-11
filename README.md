@@ -34,8 +34,7 @@ This bot is meant to be hosted on a Heroku server.
    - `heroku/python`
    - `https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest.git`
    - `https://github.com/xrisk/heroku-opus.git`
-1. Add the following config vars (Settings -> Config Vars):
-    - `TOKENS` - Tokens for the bots separated by any whitespace character (e.g. `token1 token2 ...`)
+1. Setup the environment variables (Settings -> Config Vars). See [Configuration](#configuration) for more information
 1. Connect the app to the repository (Deploy -> Deployment method -> GitHub)
 1. Start the worker (Resources -> worker -> edit -> toggle the switch)
 
@@ -58,10 +57,7 @@ This bot is meant to be hosted on a Heroku server.
         source .venv/bin/activate
         pip install -r requirements.txt
         ```
-1. Create a `.env` file with the following content:
-   ```env
-   TOKENS=token1\ntoken2
-   ```
+1. Setup the environment variables. See [Configuration](#configuration) for more information
 1. Run the bot with the following command:
     Windows:
         ```cmd
@@ -72,3 +68,28 @@ This bot is meant to be hosted on a Heroku server.
         ```bash
         .venv/bin/python bot.py
         ```
+#### Docker
+
+1. Clone the repository
+1. Build the image with the following command:
+    ```bash
+    docker build -t instruity .
+    ```
+1. Run the container with the following command:
+    ```bash
+    docker run -e TOKENS="token1 token2 ..." -e SPECIALITIES="url1 url2 ..." -e HIDDEN=1 instruity
+    ```
+
+## Configuration
+
+Create a `.env` file with the following content:
+
+```env
+TOKENS=token1 token2 ...
+SPECIALITIES=url1 url2 ... [optional]
+HIDDEN=1 [optional]
+```
+
+- `TOKENS` - whitespace-separated list of bot tokens (any whitespace is allowed: space, tab, newline, etc.)
+- `SPECIALITIES` - whitespace-separated list of URLs to special songs
+- `HIDDEN` - if set to `1`, the bots will be shown as offline in the server
