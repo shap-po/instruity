@@ -19,5 +19,5 @@ RUN apt-get install -y ffmpeg
 COPY . .
 
 # Run the app
-CMD ["python", "bot.py"]
+CMD ["python", "-u", "bot.py"]
 
