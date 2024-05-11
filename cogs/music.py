@@ -87,29 +87,58 @@ class SongQueue(asyncio.Queue):
                 await self.put(item)
 
 
-class Song(discord.PCMVolumeTransformer):
+class TaskList:
+    """List of tasks to run in sequence."""
+
+    def __init__(self, tasks: typing.List[typing.Coroutine] = None):
+        self._tasks = tasks or []
+
+    def add(self, item: typing.Coroutine):
+        self._tasks.append(item)
+
+    async def run(self):
+        while len(self._tasks) > 0:
+            task = self._tasks.pop(0)
+            await task
+
+
+class Song:
     """An object that contains basic info about song and can be used in player as music source."""
     ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 
     def __init__(self, requester: discord.Member, data: dict, volume: float = DEFAULT_VOLUME):
+        _type = data.get('_type')
+
         self.uploader = data.get('uploader')
-        self.uploader_url = data.get('uploader_url')
         self.title = data.get('title')
-        self.thumbnail = data.get('thumbnail')
         self.duration = self.parse_duration(int(data.get('duration')))
-        self.url = data.get('webpage_url')
-        self.stream_url = data.get('url')
+
+        if _type is None:  # if it's a single song
+            self.uploader_url = data.get('uploader_url')
+            self.thumbnail = data.get('thumbnail')
+            self.url = data.get('webpage_url')
+            self.stream_url = data.get('url')
+        elif _type == 'url':  # song is a part of playlist
+            self.uploader_url = data.get('channel_url')
+            thumbnails = data.get('thumbnails', [])
+            self.thumbnail = thumbnails[-1].get('url') if thumbnails else None
+            self.url = data.get('url')
+            self.stream_url = None
+        else:
+            raise SongException(f'Не вдалося розпізнати тип треку "{self.title}": "{_type}"')
+
+        self.is_loaded = self.stream_url is not None
+        self.is_loading = False
         self.requester = requester
         self.skip_votes = set()
         self.volume = volume
-
-        self.restart()
+        self.transformer: discord.PCMVolumeTransformer | None = None
 
     def __str__(self):
         return f'**{self.title}** від **{self.uploader}**'
 
     @classmethod
-    async def create_source(self, search: str, requester: discord.Member, loop: asyncio.BaseEventLoop = None) -> typing.List['Song']:
+    async def create_sources(self, search: str, requester: discord.Member, loop: asyncio.BaseEventLoop = None):
         """Create a new song source from a search.
 
         Args:
@@ -121,7 +150,7 @@ class Song(discord.PCMVolumeTransformer):
             SongException: Raised when can't find song.
 
         Returns:
-            :class:`Song` | list[:class:`Song`]
+            typing.AsyncGenerator['Song', None]: A generator of songs.
         """
 
         loop = loop or asyncio.get_event_loop()
@@ -130,7 +159,11 @@ class Song(discord.PCMVolumeTransformer):
             search = search.replace(':', '')
 
         partial = functools.partial(
-            self.ytdl.extract_info, search, download=False)
+            self.ytdl.extract_info,
+            search,
+            download=False,
+            process=False,
+        )
 
         try_count = 0
         while True:
@@ -141,8 +174,7 @@ class Song(discord.PCMVolumeTransformer):
                     try_count += 1
                     await asyncio.sleep(0.1)
                     continue
-                raise SongException(
-                    f'Сталася помилка при отримані треку за запитом "{search}"')
+                raise SongException(f'Сталася помилка при отримані треку за запитом "{search}"')
             else:
                 break
 
@@ -152,18 +184,56 @@ class Song(discord.PCMVolumeTransformer):
 
         if 'entries' in processed_info:
             songs = processed_info['entries']
-            if len(songs) == 0:
-                raise SongException(
-                    f'Не вдалося знайти нічого за запитом "{search}"')
+            first_song = next(songs, None)
         else:
             songs = [processed_info]
+            first_song = songs.pop(0)
 
-        return [self(requester, data=info) for info in songs]
+        if first_song is None:
+            raise SongException(f'Не вдалося знайти нічого за запитом "{search}"')
+
+        first_song = self(requester, data=first_song)
+        await first_song.load()  # preload the first song before yielding it
+
+        yield first_song
+
+        tasks = TaskList()
+        for song in songs:
+            song = self(requester, data=song)
+            tasks.add(song.load())
+            yield song
+
+        # load the rest of the songs one by one
+        loop.create_task(tasks.run())
 
     def restart(self) -> None:
         """Restart the song source to continue playback in loop mode."""
-        super().__init__(discord.FFmpegPCMAudio(
-            self.stream_url, **FFMPEG_OPTIONS), self.volume)
+        self.transformer = discord.PCMVolumeTransformer(
+            discord.FFmpegPCMAudio(self.stream_url, **FFMPEG_OPTIONS),
+            self.volume
+        )
+
+    async def load(self) -> None:
+        """Retrieve the stream URL of the song."""
+        if self.is_loading or self.is_loaded:
+            return  # skip if already loading or loaded
+
+        self.is_loading = True
+
+        partial = functools.partial(
+            self.ytdl.extract_info,
+            self.url,
+            download=False,
+        )
+        loop = asyncio.get_event_loop()
+        try:
+            info = await loop.run_in_executor(None, partial)
+        except:
+            raise SongException(f'Не вдалося отримати аудіо за посиланням "{self.url}"')
+        self.stream_url = info.get('url')
+        self.thumbnail = info.get('thumbnail')
+        self.is_loading = False
+        self.is_loaded = True
 
     @staticmethod
     def parse_duration(duration: int) -> str:
@@ -259,9 +329,8 @@ class VoiceClient:
         while True:
             self.play_next.clear()
 
-            if self.loop:
-                self.current.restart()
-            else:
+            # wait for the next song
+            if not self.loop:
                 try:
                     async with timeout(180):  # 3 minutes
                         self.current = await self.queue.get()
@@ -269,12 +338,29 @@ class VoiceClient:
                     self.bot.loop.create_task(self.stop())
                     return
 
-            self.current.volume = self.volume
+            # ensure that the voice client is connected
             if not self.voice:
                 self.bot.loop.create_task(self.stop())
                 return
-            self.voice.play(self.current, after=self.play_next_song)
 
+            # load the song if it's not loaded
+            try:
+                async with timeout(30):  # 30 seconds
+                    await self.current.load()
+                    while not self.current.is_loaded:
+                        pass
+            except asyncio.TimeoutError:
+                # skip the song
+                continue
+
+            # update song player
+            self.current.restart()
+            self.current.volume = self.volume
+
+            # play the song
+            self.voice.play(self.current.transformer, after=self.play_next_song)
+
+            # wait for the song to end
             await self.play_next.wait()
 
     def play_next_song(self, error=None):
@@ -426,22 +512,25 @@ class MusicCog(commands.Cog):
 
         if not silent:
             await interaction.response.defer(thinking=True)
+
+        count = 0
         try:
-            songs = await Song.create_source(search=search, requester=interaction.user, loop=self.bot.loop)
+            async for song in Song.create_sources(search=search, requester=interaction.user, loop=self.bot.loop):
+                await voice_client.queue.add(song)
+                count += 1
         except SongException as e:
             if not silent:
                 await smart_send(interaction, content=str(e))
             return False
-        else:
-            if len(songs) > 1:
-                if not silent:
-                    await smart_send(interaction, content=f'{len(songs)} треків додано в чергу')
-            elif len(songs) == 1:
-                if not silent:
-                    await smart_send(interaction, content=f'Трек {songs[0]} додано в чергу', view=PlayAgainView(songs[0].url))
+
+        if count == 0:
+            return False
+        if not silent:
+            if count > 1:
+                await smart_send(interaction, content=f'{count} треків додано в чергу')
             else:
-                return False
-            await voice_client.queue.add(songs)
+                await smart_send(interaction, content=f'Трек {song} додано в чергу', view=PlayAgainView(song.url))
+
         return True
 
     async def stop(self, interaction: discord.Interaction) -> None:
