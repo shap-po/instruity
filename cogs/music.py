@@ -70,14 +70,11 @@ class SongQueue(asyncio.Queue):
         return self.qsize()
 
     def clear(self):
-        # loop through all the items in the queue and cancel them
-        for item in list(self._queue):
-            if isinstance(item, Song):
-                item.in_queue = False
         self._queue.clear()
 
     def shuffle(self):
         random.shuffle(self._queue)
+        self.preload()
 
     def remove(self, index: int):
         del self._queue[index]
@@ -90,23 +87,19 @@ class SongQueue(asyncio.Queue):
             else:
                 await self.put(item)
 
+    async def get(self):
+        song = await super().get()
+        self.preload()
+        return song
 
-class TaskList:
-    """List of tasks to run in sequence."""
+    def preload(self, index: int = 0):
+        """Preload a song in the queue by index to reduce latency."""
+        if index < 0 or index >= len(self._queue):
+            return
 
-    def __init__(self, tasks: typing.List[typing.Coroutine] = None):
-        self._tasks = tasks or []
-
-    def add(self, item: typing.Coroutine):
-        self._tasks.append(item)
-
-    async def run(self):
-        while len(self._tasks) > 0:
-            task = self._tasks.pop(0)
-            try:
-                await task
-            except Exception as e:
-                continue
+        song = self._queue[index]
+        loop = asyncio.get_event_loop()
+        loop.create_task(song.load())
 
 
 class Song:
@@ -137,7 +130,6 @@ class Song:
         self.is_loaded = self.stream_url is not None
         self.is_loading = False
         self.error = None
-        self.in_queue = True
 
         self.requester = requester
         self.skip_votes = set()
@@ -193,18 +185,15 @@ class Song:
                 f'Не вдалося отримати аудіо за запитом "{search}"')
 
         if 'entries' in processed_info:
-            songs = processed_info['entries']
+            songs = processed_info.get('entries', None)
+            if songs is None:
+                raise SongException(f'Не вдалося отримати аудіо за запитом "{search}"')
         else:
             songs = [processed_info]
 
-        tasks = TaskList()
         for song in songs:
             song = self(requester, data=song)
-            tasks.add(song.load())
             yield song
-
-        # load the songs one by one
-        loop.create_task(tasks.run())
 
     def restart(self) -> None:
         """Restart the song source to continue playback in loop mode."""
@@ -216,7 +205,7 @@ class Song:
     async def load(self) -> None:
         """Retrieve the stream URL of the song."""
 
-        if self.is_loading or self.is_loaded or self.error is not None or self.in_queue is False:
+        if self.is_loading or self.is_loaded or self.error is not None:
             return
 
         self.is_loading = True
