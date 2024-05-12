@@ -99,7 +99,7 @@ class SongQueue(asyncio.Queue):
 
         song = self._queue[index]
         loop = asyncio.get_event_loop()
-        loop.create_task(song.load())
+        loop.create_task(song.load(raise_errors=False))
 
 
 class Song:
@@ -202,7 +202,7 @@ class Song:
             self.volume
         )
 
-    async def load(self) -> None:
+    async def load(self, raise_errors: bool = True) -> None:
         """Retrieve the stream URL of the song."""
 
         if self.is_loading or self.is_loaded or self.error is not None:
@@ -220,6 +220,9 @@ class Song:
             info = await loop.run_in_executor(None, partial)
         except:
             self.error = True
+            if not raise_errors:
+                return
+            print('Error while loading song:', self.url)
             raise SongException(f'Не вдалося отримати аудіо за посиланням "{self.url}"')
         self.stream_url = info.get('url')
         self.thumbnail = info.get('thumbnail')
