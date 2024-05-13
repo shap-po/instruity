@@ -79,13 +79,16 @@ class SongQueue(asyncio.Queue):
     def remove(self, index: int):
         del self._queue[index]
 
-    async def add(self, item):
-        if item:
-            if isinstance(item, list):
-                for i in item:
-                    await self.put(i)
-            else:
-                await self.put(item)
+    async def add(self, item: typing.Union['Song', typing.List['Song']]):
+        if isinstance(item, list):
+            for i in item:
+                await self.put(i)
+        else:
+            await self.put(item)
+        
+        # preload the song if it's the next in the queue
+        if len(self._queue) == 1:
+            self.preload()
 
     async def get(self):
         song = await super().get()
@@ -152,13 +155,10 @@ class Song:
             SongException: Raised when can't find song.
 
         Returns:
-            typing.AsyncGenerator['Song', None]: A generator of songs.
+            typing.Generator[Song]: A generator of songs.
         """
 
         loop = loop or asyncio.get_event_loop()
-
-        if not search.startswith('https:') and not search.startswith('http:'):
-            search = search.replace(':', '')
 
         partial = functools.partial(
             self.ytdl.extract_info,
@@ -181,19 +181,25 @@ class Song:
                 break
 
         if processed_info is None:
-            raise SongException(
-                f'Не вдалося отримати аудіо за запитом "{search}"')
+            raise SongException(f'Щось пішло не так при отримані треку за запитом "{search}"')
+
+        # the search is not a direct link
+        if processed_info.get('extractor', None) == 'generic':
+            url = processed_info.get('url')
+            if url != search:
+                # should be transformed into ytsearch:search
+                return await self.create_sources(url, requester, loop)
+            
+            raise SongException(f'Пошук за запитом "{search}" не дав результатів')
 
         if 'entries' in processed_info:
             songs = processed_info.get('entries', None)
             if songs is None:
-                raise SongException(f'Не вдалося отримати аудіо за запитом "{search}"')
+                raise SongException(f'Не вдалося знайти жодного треку за запитом "{search}"')
         else:
             songs = [processed_info]
 
-        for song in songs:
-            song = self(requester, data=song)
-            yield song
+        return (Song(requester, song) for song in songs)
 
     def restart(self) -> None:
         """Restart the song source to continue playback in loop mode."""
@@ -512,24 +518,31 @@ class MusicCog(commands.Cog):
         if not silent:
             await interaction.response.defer(thinking=True)
 
-        count = 0
+        # get song
         try:
-            async for song in Song.create_sources(search=search, requester=interaction.user, loop=self.bot.loop):
-                await voice_client.queue.add(song)
-                count += 1
+            songs = await Song.create_sources(search=search, requester=interaction.user, loop=self.bot.loop)
         except SongException as e:
             if not silent:
                 await smart_send(interaction, content=str(e))
             return False
+        
+        # count them and add to the queue
+        count = 0
+        for song in songs:
+            await voice_client.queue.add(song)
+            count += 1
 
-        if count == 0:
-            return False
+        # respond to the user based on the song count
         if not silent:
+            if count == 0:
+                await smart_send(interaction, content='Не вдалося знайти жодного треку')
             if count > 1:
                 await smart_send(interaction, content=f'{count} треків додано в чергу')
             else:
                 await smart_send(interaction, content=f'Трек {song} додано в чергу', view=PlayAgainView(song.url))
 
+        if count == 0:
+            return False
         return True
 
     async def stop(self, interaction: discord.Interaction) -> None:
