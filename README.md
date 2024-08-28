@@ -53,10 +53,10 @@ This bot is meant to be hosted on a Heroku server.
 
     Linux:
     ```bash
-        python -m venv .venv
-        source .venv/bin/activate
-        pip install -r requirements.txt
-        ```
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
 1. Setup the environment variables. See [Configuration](#configuration) for more information
 1. Run the bot with the following command:
     Windows:
