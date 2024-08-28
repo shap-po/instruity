@@ -7,9 +7,7 @@ async def smart_send(interaction: discord.Interaction, *args, **kwargs) -> None:
     # if interaction is a button - send message which will be deleted after 10 seconds
     # if id starts with play_again_ - treat it as a regular command
     if interaction.data and interaction.data.get('custom_id') and not interaction.data.get('custom_id').startswith('play_again_'):
-        await interaction.channel.send(*args, **kwargs, delete_after=10)
-        if not interaction.response.is_done():
-            await interaction.response.send_message()  # mark interaction as complete
+        await interaction.response.send_message(*args, **kwargs, delete_after=10)
         return
 
     if interaction.response.is_done():
