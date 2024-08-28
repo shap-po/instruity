@@ -1,12 +1,17 @@
 import asyncio
+import logging
 import os
 import discord
 from discord.ext import commands
+from discord.utils import setup_logging
 
 from cogs import MusicCog
 
 from dotenv import load_dotenv
 load_dotenv()
+
+logger = logging.getLogger()
+setup_logging()  # setup discord.py's default logger
 
 
 class Instruity(commands.Bot):
@@ -24,6 +29,10 @@ class Instruity(commands.Bot):
         })
         self.token = token
         self.speciality = speciality
+        self.logger = logger  # fallback logger, will be replaced in on_ready when bot's name is known
+
+        if os.environ.get('HIDDEN'):
+            self.status = discord.Status.invisible
 
     async def wrapped_connect(self):
         await self.add_cog(MusicCog(self))
@@ -34,11 +43,9 @@ class Instruity(commands.Bot):
             await self.close()
 
     async def on_ready(self):
-        print(f'Logged in as {self.user.name}')
-        if os.environ.get('HIDDEN'):
-            await self.change_presence(status=discord.Status.invisible)
-        else:
-            await self.change_presence(status=discord.Status.online)
+        self.logger = logging.getLogger(f'bot:{self.user.name}')  # set logger to bot's name
+        self.logger.info(f'Logged in as {self.user.name}')
+
         await self.tree.sync()
 
 
@@ -51,18 +58,21 @@ def main():
             with open('tokens.txt', 'r') as f:
                 tokens = f.read()
         except FileNotFoundError:
-            print('Tokens not found. Either set the TOKENS environment variable or create a .env file with the TOKENS variable.')
+            logger.error(
+                'Tokens not found. Either set the TOKENS environment variable or create a .env file with the TOKENS variable.')
             exit(1)
     tokens = tokens.split()
 
     if specialities:
         specialities = specialities.split()
         if len(specialities) != len(tokens):
-            print('Warning: Specialities and tokens are not the same length. Specialities will be ignored.')
+            logger.warning('Specialities and tokens are not the same length. Specialities will be ignored.')
             specialities = None
         else:
-            specialities = [s if s.lower() not in ('none', 'null', 'nil', '-')
-                            else None for s in specialities]
+            specialities = [
+                s if s.lower() not in ('none', 'null', 'nil', '-') else None
+                for s in specialities
+            ]
     if not specialities:
         specialities = [None] * len(tokens)
 

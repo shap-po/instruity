@@ -6,18 +6,19 @@ import discord
 import itertools
 import random
 import yt_dlp
+
 from discord.ext import commands
 from discord import app_commands
-from async_timeout import timeout
+
+from utils import smart_send, is_admin
 
 # handling exceptions
+import traceback
 try:
     from rich import print
 except:
     pass
-import traceback
 
-from utils import smart_send, is_admin
 
 DEFAULT_VOLUME = 0.35
 
@@ -85,7 +86,7 @@ class SongQueue(asyncio.Queue):
                 await self.put(i)
         else:
             await self.put(item)
-        
+
         # preload the song if it's the next in the queue
         if len(self._queue) == 1:
             self.preload()
@@ -133,6 +134,7 @@ class Song:
         self.is_loaded = self.stream_url is not None
         self.is_loading = False
         self.error = None
+        self.skipped = False
 
         self.requester = requester
         self.skip_votes = set()
@@ -189,7 +191,7 @@ class Song:
             if url != search:
                 # should be transformed into ytsearch:search
                 return await self.create_sources(url, requester, loop)
-            
+
             raise SongException(f'Пошук за запитом "{search}" не дав результатів')
 
         if 'entries' in processed_info:
@@ -229,9 +231,30 @@ class Song:
             if not raise_errors:
                 return
             print('Error while loading song:', self.url)
+            print(traceback.format_exc())
             raise SongException(f'Не вдалося отримати аудіо за посиланням "{self.url}"')
         self.stream_url = info.get('url')
         self.thumbnail = info.get('thumbnail')
+
+        # TODO: use lavalink instead of yt-dlp
+        # partial = functools.partial(
+        #     requests.get,
+        #     'http://localhost:8000/stream',
+        #     json={'url': self.url}
+        # )
+        # loop = asyncio.get_event_loop()
+        # info = await loop.run_in_executor(None, partial)
+        # if info.status_code != 200:
+        #     self.error = True
+        #     self.is_loading = False
+        #     if not raise_errors:
+        #         return
+        #     print('Error while loading song:', self.url)
+        #     print(info.status_code, info.text)
+        #     raise SongException(f'Не вдалося отримати аудіо за посиланням "{self.url}"')
+        # info = info.json()
+        # self.stream_url = info.get('stream_url')
+        # self.thumbnail = info.get('thumbnail')
 
         self.is_loading = False
         self.is_loaded = True
@@ -333,7 +356,7 @@ class VoiceClient:
             # wait for the next song
             if not self.loop:
                 try:
-                    async with timeout(180):  # 3 minutes
+                    async with asyncio.timeout(180):  # 3 minutes
                         self.current = await self.queue.get()
                 except asyncio.TimeoutError:
                     self.bot.loop.create_task(self.stop())
@@ -341,10 +364,12 @@ class VoiceClient:
 
             # load the song if it's not loaded
             try:
-                async with timeout(60):
+                async with asyncio.timeout(60):
                     await self.current.load()
                     while not self.current.is_loaded:
-                        pass
+                        await asyncio.sleep(0.1)
+                if self.current.skipped:
+                    continue
             except asyncio.TimeoutError:
                 # song loading took too long, skip it
                 continue
@@ -389,6 +414,10 @@ class VoiceClient:
     def skip(self):
         self.loop = False
         if self.is_playing and self.voice:
+            if self.current:
+                self.current.is_loaded = True  # skip the loading
+                self.current.skipped = True
+            # stop the current song
             self.voice.stop()
 
     def reset_player(self) -> None:
@@ -409,15 +438,6 @@ class MusicCog(commands.Cog):
         @bot.event
         async def on_interaction(interaction: discord.interactions.Interaction) -> None:
             await self.interaction_listener(interaction)
-
-    # for some reason, cog is just ignoring all the exceptions, raised inside, so here is a custom error handlers
-    def cog_app_command_error(self, ctx, error):
-        print(traceback.format_exc())
-        return super().cog_app_command_error(ctx, error)
-
-    def cog_command_error(self, ctx, error):
-        print(traceback.format_exc())
-        return super().cog_command_error(ctx, error)
 
     def get_voice_client(self, interaction: discord.Interaction) -> VoiceClient:
         """Get a voice client or create a new one."""
@@ -525,7 +545,7 @@ class MusicCog(commands.Cog):
             if not silent:
                 await smart_send(interaction, content=str(e))
             return False
-        
+
         # count them and add to the queue
         count = 0
         for song in songs:
