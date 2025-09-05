@@ -31,7 +31,8 @@ class Instruity(commands.Bot):
         self.speciality = speciality
         self.logger = logger  # fallback logger, will be replaced in on_ready when bot's name is known
 
-        if os.environ.get('HIDDEN'):
+        hidden = os.environ.get('HIDDEN', '').lower() in ('1', 'true', 'yes', 'y', 'on')
+        if hidden:
             self.status = discord.Status.invisible
 
     async def wrapped_connect(self):

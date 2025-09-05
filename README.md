@@ -92,4 +92,4 @@ HIDDEN=1 [optional]
 
 - `TOKENS` - whitespace-separated list of bot tokens (any whitespace is allowed: space, tab, newline, etc.)
 - `SPECIALITIES` - whitespace-separated list of URLs to special songs
-- `HIDDEN` - if set to `1`, the bots will be shown as offline in the server
+- `HIDDEN` - if set to `1`/`true`/`on`, the bots will be shown as offline in the server
