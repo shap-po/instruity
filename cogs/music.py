@@ -51,7 +51,8 @@ RANDOM_FOOTERS = [
 ]
 RANDOM_FOOTER_CHANCE = 0.1
 
-yt_dlp.utils.bug_reports_message = lambda: ''
+# ignore bug report messages
+yt_dlp.utils.bug_reports_message = lambda *args, **kwargs: ''
 
 
 class SongException(Exception):
@@ -178,6 +179,10 @@ class Song:
                     try_count += 1
                     await asyncio.sleep(0.1)
                     continue
+
+                print('Error while searching song:', search)
+                print(traceback.format_exc())
+
                 raise SongException(f'Сталася помилка при отримані треку за запитом "{search}"')
             else:
                 break
